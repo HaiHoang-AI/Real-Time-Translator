@@ -1,0 +1,16 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Downloaded ML models (fetch with piper.download_voices / HF hub)
+models/
+
+# Local editor/agent settings
+.claude/
