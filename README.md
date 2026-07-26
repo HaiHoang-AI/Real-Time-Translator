@@ -1,81 +1,148 @@
-# Real-Time Translate (rtt)
+# Real-Time Translator
 
-Ứng dụng PC dịch thuật **thời gian thực, chạy 100% local** — nghe âm thanh hệ thống
-(YouTube, Netflix, họp online…), hiện **phụ đề overlay** và có **chế độ thuyết minh
-(dub/cabin)**: giọng máy đọc bản dịch đè lên tiếng gốc, tự giảm âm lượng tiếng gốc.
+**Local, real-time speech translation for your PC.** Listens to whatever your
+computer is playing (YouTube, Netflix, online meetings, games…), then shows
+live translated subtitles as an on-screen overlay — and can even *speak* the
+translation over the original audio like a simultaneous interpreter
+("dub / cabin mode"). Everything runs **100% on your machine**: no cloud, no
+account, no audio ever leaves your PC.
 
-Không có bất kỳ dữ liệu âm thanh nào rời khỏi máy.
+> 🇻🇳 Người Việt? Xem [hướng dẫn tiếng Việt](#-hướng-dẫn-tiếng-việt) bên dưới.
 
-## Tính năng
+## Features
 
-- 🎧 **Bắt âm thanh hệ thống** qua WASAPI loopback — không cần virtual cable
-- 📝 **Phụ đề real-time**: partial hiện ngay (~0.8s), câu chốt sau ~1–4s
-- 🌐 **Dịch offline** bằng NLLB-200 (hỗ trợ tiếng Việt tốt, 200 ngôn ngữ)
-- 🗣️ **Chế độ thuyết minh (`--dub`)**: TTS tiếng Việt (Piper) đọc bản dịch,
-  tự duck âm lượng các app khác như phiên dịch cabin, tự tăng tốc đọc khi bị tụt lại
-- ⚡ **GPU (CUDA)** tự bật nếu có, fallback CPU; VAD + thuật toán chốt câu riêng
-- 🖥️ **Overlay** không viền, always-on-top, click-through, kéo thả qua system tray
+- 🎧 **System-audio capture** via WASAPI loopback — no virtual cable needed
+- 📝 **Real-time subtitles**: live partial updates ~0.8 s, sentences finalized
+  in ~1–4 s (GPU) using an early-commit algorithm that cuts on punctuation,
+  so non-stop narration (TED talks, news) still translates sentence by sentence
+- 🌐 **Offline translation** with NLLB-200 (200 languages, strong Vietnamese)
+- 🗣️ **Dub / cabin mode** (`--dub`): a local TTS voice (Piper) speaks the
+  translation over the original, auto-ducking other apps' volume and
+  dynamically speeding up to catch up — like a human interpreter
+- ⚡ **CUDA acceleration** with automatic CPU fallback; auto-selects the best
+  Whisper model available locally (`large-v3` → `small`)
+- 🖥️ **Overlay** that is frameless, always-on-top and click-through — it never
+  steals focus from your game or video
 
-## Yêu cầu
+## Requirements
 
-- Windows 11 (WASAPI loopback + per-app volume)
-- Python 3.11+ và [uv](https://docs.astral.sh/uv/)
-- (Tùy chọn) GPU NVIDIA — nhanh hơn ~20 lần
-- Lưu ý: **Smart App Control** phải tắt (chặn DLL chưa ký của thư viện ML)
+- Windows 11 (WASAPI loopback + per-app volume control)
+- Python 3.11+ and [uv](https://docs.astral.sh/uv/)
+- Optional: NVIDIA GPU (≈20× faster; first CUDA run JIT-compiles once)
+- Note: Windows **Smart App Control** must be off (it blocks unsigned DLLs
+  shipped by mainstream ML wheels)
 
-## Cài đặt
+## Quick start
 
 ```bash
+git clone https://github.com/HaiHoang-AI/Real-Time-Translator.git
+cd Real-Time-Translator
 uv sync
-# Tải giọng thuyết minh tiếng Việt (1 lần):
+
+# one-time: download the Vietnamese dub voice
+uv run python -m piper.download_voices --data-dir models/piper vi_VN-vais1000-medium
+
+# subtitles only (English -> Vietnamese)
+uv run python -m rtt.app --src en --tgt vi
+
+# subtitles + spoken dub
+uv run python -m rtt.app --src en --tgt vi --dub
+```
+
+Whisper and NLLB models download automatically to the Hugging Face cache on
+first run (~1.1 GB with the default `small`; `large-v3` is picked up
+automatically if you pre-download it):
+
+```bash
+uv run python -c "from huggingface_hub import snapshot_download; snapshot_download('Systran/faster-whisper-large-v3')"
+```
+
+Useful flags: `--model auto|small|medium|large-v3`, `--device auto|cuda|cpu`,
+`--no-live` (disable live partial translation), `--console` (debug mode).
+Control the app from the tray icon (move subtitles / quit).
+
+## How it works
+
+```
+Loopback audio (WASAPI) ──► Silero VAD ──► faster-whisper (STT)
+        │                                     │ partials / commits
+        │                                     ▼
+        │                               NLLB-200 (MT)
+        │                                     │
+        │                     ┌───────────────┴──────────────┐
+        │                     ▼                              ▼
+        │              Subtitle overlay                Piper TTS (dub)
+        │                                                    │
+        └──── duck other apps' volume ◄──────────────────────┘
+```
+
+| Module | Role |
+|---|---|
+| `rtt/audio.py` | Loopback capture + streaming resample to 16 kHz mono; survives WASAPI starvation on silence |
+| `rtt/stt.py` | Streaming STT: VAD + partial/commit + punctuation early-commit (word timestamps) |
+| `rtt/translate.py` | NLLB-200 via CTranslate2, CUDA w/ CPU fallback |
+| `rtt/overlay.py` | Transparent subtitle overlay (PySide6) |
+| `rtt/dub.py` | Piper TTS + per-app ducking (pycaw) + catch-up pacing + feedback gate |
+| `rtt/app.py` | Pipeline wiring, live translation, tray, single-instance |
+| `rtt/cudalibs.py` | cuBLAS/cuDNN DLL resolution from pip wheels |
+
+## Roadmap
+
+- [ ] Process-exclusive loopback (keep hearing the original while the dub voice speaks)
+- [ ] PhoWhisper for Vietnamese-source audio
+- [ ] Settings UI (languages, font, position, voices)
+- [ ] Packaged installer
+
+## License & third-party notices
+
+The source code in this repository is released under the **MIT License**
+(see [LICENSE](LICENSE)). It depends on third-party components with their own
+licenses — **read this before any commercial use**:
+
+| Component | License | Implication |
+|---|---|---|
+| [NLLB-200 weights](https://huggingface.co/facebook/nllb-200-distilled-600M) | **CC-BY-NC 4.0** | ⚠️ **Non-commercial only.** Swap the MT engine before selling anything built on this. |
+| [piper-tts](https://github.com/OHF-Voice/piper1-gpl) | **GPL-3.0** | Distributing a bundled binary that includes Piper makes the combined work GPL. Fine for this source repo / personal use. |
+| [faster-whisper](https://github.com/SYSTRAN/faster-whisper) + Whisper weights | MIT | OK |
+| [Silero VAD](https://github.com/snakers4/silero-vad) | MIT | OK |
+| PySide6 / Qt | LGPL-3.0 | OK when dynamically linked (default) |
+| pyaudiowpatch, pycaw, CTranslate2 | MIT | OK |
+
+---
+
+## 🇻🇳 Hướng dẫn tiếng Việt
+
+Ứng dụng dịch **thời gian thực, chạy hoàn toàn trên máy bạn** — nghe âm thanh
+hệ thống (YouTube, Netflix, họp online…), hiện phụ đề dịch nổi trên màn hình,
+và có **chế độ thuyết minh**: giọng máy tiếng Việt đọc bản dịch đè lên tiếng
+gốc như phiên dịch cabin. Không cloud, không tài khoản, âm thanh không rời máy.
+
+### Cài đặt
+
+```bash
+git clone https://github.com/HaiHoang-AI/Real-Time-Translator.git
+cd Real-Time-Translator
+uv sync
 uv run python -m piper.download_voices --data-dir models/piper vi_VN-vais1000-medium
 ```
 
-Model Whisper + NLLB tự tải về cache HuggingFace ở lần chạy đầu (~1.1 GB).
-
-## Chạy
+### Chạy
 
 ```bash
-# Phụ đề overlay: dịch Anh -> Việt
+# Phụ đề (Anh -> Việt)
 uv run python -m rtt.app --src en --tgt vi
 
-# Chế độ thuyết minh (dub) + phụ đề
+# Phụ đề + giọng thuyết minh tiếng Việt
 uv run python -m rtt.app --src en --tgt vi --dub
-
-# Chế độ console (debug, không overlay)
-uv run python -m rtt.app --console --src en --tgt vi
 ```
 
-Tùy chọn: `--model small|medium|large-v3` (mặc định `small`), `--device auto|cuda|cpu`.
-Điều khiển qua icon ở system tray (di chuyển phụ đề / thoát).
+- Điều khiển qua icon **VI** ở khay hệ thống (di chuyển phụ đề / thoát)
+- Lần chạy đầu sẽ tải model (~1.1 GB) — các lần sau mở ngay
+- Máy có GPU NVIDIA: nhanh hơn ~20 lần, lần đầu compile kernel ~10–30 giây
+- Cần tắt **Smart App Control** (Windows Security → App & browser control)
 
-## Kiến trúc
+### Lưu ý bản quyền
 
-```
-Loopback audio (WASAPI) ──► VAD (Silero) ──► faster-whisper (STT)
-        │                                        │ partial / commit
-        │                                        ▼
-        │                                  NLLB-200 (dịch)
-        │                                        │
-        │                        ┌───────────────┴──────────────┐
-        │                        ▼                              ▼
-        │                 Overlay phụ đề                 Piper TTS (dub)
-        │                                                       │
-        └── duck volume các app khác ◄──────────────────────────┘
-```
-
-| File | Vai trò |
-|---|---|
-| `rtt/audio.py` | Bắt loopback + resample 16 kHz mono; chống "đói" stream khi im lặng |
-| `rtt/stt.py` | Streaming STT: VAD + thuật toán chốt câu (partial/commit) |
-| `rtt/translate.py` | NLLB-200 qua CTranslate2, GPU/CPU tự chọn |
-| `rtt/overlay.py` | Cửa sổ phụ đề trong suốt (PySide6) |
-| `rtt/dub.py` | TTS Piper + ducking (pycaw) + pacing động + gate chống vòng lặp |
-| `rtt/app.py` | Ghép pipeline, CLI, system tray |
-| `rtt/cudalibs.py` | Nạp DLL cuBLAS/cuDNN từ pip cho CTranslate2 |
-
-## Trạng thái & Lộ trình
-
-- [x] P0–P2: pipeline hoàn chỉnh, đã test E2E (EN→VI, phụ đề + dub)
-- [ ] V2: process-exclusive loopback (không mất lời gốc khi dub đang đọc)
-- [ ] PhoWhisper cho STT tiếng Việt nguồn; chọn model theo máy; đóng gói installer
+Code repo này dùng giấy phép MIT, nhưng model dịch **NLLB-200 là
+CC-BY-NC (phi thương mại)** và **Piper TTS là GPL-3.0** — nếu định thương mại
+hóa cần thay các thành phần này (xem bảng ở trên).
