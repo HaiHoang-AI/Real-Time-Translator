@@ -19,6 +19,7 @@ translator (and later the TTS dub) consume.
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from dataclasses import dataclass
@@ -27,6 +28,12 @@ from typing import Callable, Optional
 import numpy as np
 
 RATE = 16000
+DEBUG = os.environ.get("RTT_DEBUG") == "1"
+
+
+def _dbg(msg: str) -> None:
+    if DEBUG:
+        print(f"[dbg {time.perf_counter():9.2f}] {msg}", flush=True)
 
 
 @dataclass
@@ -34,7 +41,7 @@ class SttConfig:
     model_name: str = "small"          # any faster-whisper / CT2 model id or path
     language: Optional[str] = None     # None = autodetect ("en", "vi", ...)
     device: str = "auto"               # "auto" -> try cuda, fall back to cpu
-    tick_s: float = 0.6                # how often we re-run VAD/partials
+    tick_s: float = 0.35               # how often we re-run VAD/partials
     commit_silence_s: float = 0.45     # trailing silence that finalizes a sentence
     max_buffer_s: float = 10.0         # force-commit ceiling for non-stop speech
     min_speech_s: float = 0.25         # ignore blips shorter than this
@@ -78,6 +85,9 @@ class StreamingTranscriber:
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._last_partial = ""
+        # Language Whisper detected on the most recent pass (only meaningful
+        # when cfg.language is None, i.e. autodetect mode).
+        self.detected_language: Optional[str] = None
 
     # ---------------------------------------------------------------- model
 
@@ -163,45 +173,53 @@ class StreamingTranscriber:
             self._partial_tick(buf, speech_start=speech[0]["start"])
 
     def _partial_tick(self, buf: np.ndarray, speech_start: int) -> None:
-        """Emit a partial; early-commit any finished sentence inside it."""
-        seg = buf[speech_start:]
-        if not self.cfg.early_commit:
-            text = self._transcribe(seg, beam_size=1)
-            if text and text != self._last_partial:
-                self._last_partial = text
-                self.on_partial(text)
-            return
+        """Emit a partial; early-commit any finished sentence inside it.
 
+        Uses Whisper's own segment boundaries (segments end at sentence
+        punctuation) instead of word timestamps — same effect, ~40% cheaper.
+        """
+        seg_audio = buf[speech_start:]
         t0 = time.perf_counter()
-        words = self._transcribe_words(seg)
-        if not words:
+        segments = self._transcribe_segments(seg_audio, beam_size=1)
+        _dbg(f"partial pass: {seg_audio.size/RATE:.1f}s audio -> "
+             f"{len(segments)} segments in {time.perf_counter()-t0:.2f}s")
+        if not segments:
             return
-        text = " ".join(w[0] for w in words).strip()
+        text = " ".join(s[0] for s in segments).strip()
 
-        # Find the last word that closes a sentence, leaving enough words and
-        # trailing speech behind it to be confident the speaker moved on.
         boundary = None
-        for i in range(len(words) - 1, -1, -1):
-            word, _start, end = words[i]
-            if not word.rstrip().endswith((".", "!", "?", "…")):
-                continue
-            spoken_after = (seg.size / RATE) - end
-            if (
-                i + 1 >= self.cfg.early_min_words
-                and spoken_after >= self.cfg.early_continue_s
-                and len(words) - 1 > i  # at least one word of the next sentence
-            ):
-                boundary = i
-                break
+        if self.cfg.early_commit and len(segments) > 1:
+            # Last segment that ends a sentence AND has speech continuing
+            # after it (so the boundary is real, not a mid-sentence blip).
+            for i in range(len(segments) - 2, -1, -1):
+                s_text, _start, s_end = segments[i]
+                if not s_text.rstrip().endswith((".", "!", "?", "…")):
+                    continue
+                committed_words = sum(len(s[0].split()) for s in segments[: i + 1])
+                spoken_after = (seg_audio.size / RATE) - s_end
+                if (
+                    committed_words >= self.cfg.early_min_words
+                    and spoken_after >= self.cfg.early_continue_s
+                ):
+                    boundary = i
+                    break
 
         if boundary is not None:
-            sentence = " ".join(w[0] for w in words[: boundary + 1]).strip()
-            cut = speech_start + int(words[boundary][2] * RATE)
+            sentence = " ".join(s[0] for s in segments[: boundary + 1]).strip()
+            # Cut at whichever comes first: this segment's end or the next
+            # segment's start, then step BACK a safety margin. Whisper's
+            # boundary timestamps overshoot into the next sentence on
+            # continuous speech, which would eat its first words ("These
+            # cells communicate" -> "communicate"). Re-hearing a fraction of
+            # the committed tail is harmless; losing words is not.
+            cut_s = min(segments[boundary][2], segments[boundary + 1][1]) - 0.3
+            cut = speech_start + int(max(cut_s, 0.0) * RATE)
+            cut = min(cut, buf.size)
             self._trim_to(buf.size - cut, buf.size)
             self._last_partial = ""
             if sentence:
                 self.on_commit(sentence, time.perf_counter() - t0)
-            rest = " ".join(w[0] for w in words[boundary + 1:]).strip()
+            rest = " ".join(s[0] for s in segments[boundary + 1:]).strip()
             if rest:
                 self._last_partial = rest
                 self.on_partial(rest)
@@ -212,6 +230,7 @@ class StreamingTranscriber:
     def _commit(self, audio: np.ndarray, consumed: int, total: int) -> None:
         t0 = time.perf_counter()
         text = self._transcribe(audio, beam_size=self.cfg.beam_size)
+        _dbg(f"commit pass: {audio.size/RATE:.1f}s audio in {time.perf_counter()-t0:.2f}s")
         self._trim_to(total - consumed, total)
         self._last_partial = ""
         if text:
@@ -237,23 +256,23 @@ class StreamingTranscriber:
         )
         return " ".join(seg.text.strip() for seg in segments).strip()
 
-    def _transcribe_words(self, audio: np.ndarray) -> list[tuple[str, float, float]]:
-        """Transcribe with per-word timestamps: [(word, start_s, end_s), ...]."""
+    def _transcribe_segments(
+        self, audio: np.ndarray, beam_size: int
+    ) -> list[tuple[str, float, float]]:
+        """Transcribe with segment timestamps: [(text, start_s, end_s), ...]."""
         if audio.size < int(self.cfg.min_speech_s * RATE):
             return []
-        segments, _info = self.model.transcribe(
+        segments, info = self.model.transcribe(
             audio,
             language=self.cfg.language,
-            beam_size=1,
+            beam_size=beam_size,
             condition_on_previous_text=False,
-            word_timestamps=True,
             vad_filter=False,
         )
-        words: list[tuple[str, float, float]] = []
-        for seg in segments:
-            for w in seg.words or []:
-                words.append((w.word.strip(), w.start, w.end))
-        return words
+        result = [(seg.text.strip(), seg.start, seg.end) for seg in segments]
+        if result:  # only trust detection when it actually heard something
+            self.detected_language = info.language
+        return result
 
 
 # --------------------------------------------------------------------- demo

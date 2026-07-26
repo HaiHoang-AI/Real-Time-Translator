@@ -55,7 +55,9 @@ class NllbTranslator:
 
         attempts: list[tuple[str, str]] = []
         if device in ("auto", "cuda"):
-            attempts.append(("cuda", compute_type or "float16"))
+            # int8_float16: half the VRAM of float16, same MT quality class,
+            # and it avoids OOM spikes when Whisper shares the GPU.
+            attempts.append(("cuda", compute_type or "int8_float16"))
         if device in ("auto", "cpu"):
             attempts.append(("cpu", compute_type or "int8"))
         last_err: Exception | None = None

@@ -16,6 +16,7 @@ Run:  uv run python -m rtt.app --src en --tgt vi
 from __future__ import annotations
 
 import argparse
+import os
 import queue
 import sys
 import threading
@@ -25,6 +26,8 @@ import numpy as np
 
 from rtt.audio import LoopbackCapture, MonoResampler16k
 from rtt.stt import SttConfig, StreamingTranscriber
+
+DEBUG = os.environ.get("RTT_DEBUG") == "1"
 
 
 class Pipeline:
@@ -43,12 +46,18 @@ class Pipeline:
         self.stt = StreamingTranscriber(
             SttConfig(
                 model_name=args.model,
-                language=args.src,
+                language=None if args.src == "auto" else args.src,
                 device=args.device,
             ),
             on_partial=self._on_partial,
             on_commit=self._on_commit,
         )
+
+    def _src_lang(self) -> str:
+        """Effective source language (Whisper's detection in auto mode)."""
+        if self.args.src == "auto":
+            return self.stt.detected_language or "en"
+        return self.args.src or "en"
 
     # ------------------------------------------------------------ callbacks
 
@@ -56,11 +65,32 @@ class Pipeline:
         self.bridge.partial_changed.emit(("… " + text) if text else "")
         # Queue the newest partial for live translation (translated whenever
         # the MT thread has a free moment; older partials are discarded).
-        if text and self.args.tgt != self.args.src and not self.args.no_live:
+        # Fragments under 4 words are skipped: translating "So." into a
+        # full-width subtitle line just makes the text jitter.
+        if (
+            text
+            and len(text.split()) >= 4
+            and self.args.tgt != self.args.src
+            and not self.args.no_live
+        ):
             with self._live_lock:
                 self._live_text = text
 
     def _on_commit(self, text: str, _latency: float) -> None:
+        # The early-commit safety margin re-hears a fraction of the previous
+        # sentence's tail; if this commit starts with a fragment that already
+        # appeared in the previous commit, strip it.
+        prev = getattr(self, "_last_commit_text", None)
+        first_dot = text.find(". ")
+        if prev and 0 <= first_dot < len(text) - 2:
+            head = text[: first_dot + 1].strip(" .…").lower()
+            if head and head in prev.lower():
+                text = text[first_dot + 2:].strip()
+        # Whisper sometimes re-emits the previous sentence verbatim
+        # (hallucination on near-silence) — drop exact repeats.
+        if not text or text == prev:
+            return
+        self._last_commit_text = text
         if self.args.tgt and self.args.tgt != self.args.src:
             self._mt_queue.put(text)
         else:
@@ -116,7 +146,19 @@ class Pipeline:
         from rtt.translate import NllbTranslator
 
         self.bridge.status_changed.emit("Đang tải mô hình dịch…")
-        self.translator = NllbTranslator()
+        try:
+            self.translator = NllbTranslator()
+        except Exception as exc:  # noqa: BLE001 - run subtitle-only rather than die
+            print(f"[mt] FAILED to load translator, passing text through: {exc}")
+            self.translator = None
+            self.bridge.status_changed.emit("")
+            self._mt_ready.set()
+            while not self._stop.is_set():
+                try:
+                    self.bridge.committed_changed.emit(self._mt_queue.get(timeout=0.3))
+                except queue.Empty:
+                    continue
+            return
         if self.args.dub:
             from rtt.dub import DubPlayer
 
@@ -124,8 +166,9 @@ class Pipeline:
             self.dub = DubPlayer()
             self.dub.start()
         self.bridge.status_changed.emit("")
-        src = self.args.src or "en"
+        self._mt_ready.set()
         while not self._stop.is_set():
+            src = self._src_lang()
             try:
                 text = self._mt_queue.get(timeout=0.15)
             except queue.Empty:
@@ -135,13 +178,21 @@ class Pipeline:
                     live, self._live_text = self._live_text, None
                 if live:
                     try:
+                        t0 = time.perf_counter()
                         out = self.translator.translate(live, src, self.args.tgt, beam=1)
+                        if DEBUG:
+                            print(f"[dbg] mt live {len(live)} chars in "
+                                  f"{time.perf_counter()-t0:.2f}s", flush=True)
                         self.bridge.committed_changed.emit(out + " …")
                     except Exception as exc:  # noqa: BLE001
                         print(f"[mt] live error: {exc}")
                 continue
             try:
+                t0 = time.perf_counter()
                 out = self.translator.translate(text, src, self.args.tgt, beam=4)
+                if DEBUG:
+                    print(f"[dbg] mt commit {len(text)} chars in "
+                          f"{time.perf_counter()-t0:.2f}s", flush=True)
             except Exception as exc:  # noqa: BLE001 - never kill the loop
                 out = text
                 print(f"[mt] error: {exc}")
@@ -152,11 +203,19 @@ class Pipeline:
     # ------------------------------------------------------------ lifecycle
 
     def start(self) -> None:
+        # Load the translator BEFORE audio starts flowing: loading NLLB onto
+        # the GPU while Whisper is mid-transcription can hard-crash the
+        # process (native OOM during the load spike, no traceback).
+        self._mt_ready = threading.Event()
+        mt = threading.Thread(target=self._mt_loop, daemon=True, name="mt")
+        mt.start()
+        self._threads.append(mt)
+        self._mt_ready.wait(timeout=120)
+
         self.stt.start()
-        for target, name in ((self._capture_loop, "capture"), (self._mt_loop, "mt")):
-            t = threading.Thread(target=target, daemon=True, name=name)
-            t.start()
-            self._threads.append(t)
+        cap = threading.Thread(target=self._capture_loop, daemon=True, name="capture")
+        cap.start()
+        self._threads.append(cap)
 
     def stop(self) -> None:
         self._stop.set()
@@ -225,6 +284,7 @@ def _takeover_single_instance() -> None:
     except psutil.Error:
         pass
 
+    killed = False
     for proc in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
             if proc.pid in family or proc.info["name"] not in ("python.exe", "pythonw.exe"):
@@ -233,15 +293,21 @@ def _takeover_single_instance() -> None:
             if "rtt.app" in cmdline:
                 print(f"[app] taking over from old instance pid={proc.pid}")
                 proc.kill()
+                killed = True
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
+    if killed:
+        # Give the dying process time to release its VRAM: loading our models
+        # while its allocations are still resident can OOM-crash natively.
+        time.sleep(3.0)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Real-Time Translate")
     parser.add_argument("--model", default="auto",
                         help="faster-whisper model id, or 'auto' (best available)")
-    parser.add_argument("--src", default="en", help="source language (en, vi, ja, ...)")
+    parser.add_argument("--src", default="en",
+                        help="source language (en, ja, ko, ...) or 'auto' to detect")
     parser.add_argument("--tgt", default="vi", help="target language (vi, en, ...)")
     parser.add_argument("--device", default="auto", choices=["auto", "cuda", "cpu"])
     parser.add_argument("--console", action="store_true", help="print instead of overlay")
