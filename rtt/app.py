@@ -2,19 +2,20 @@
 
 Wires the whole pipeline together:
 
-    loopback audio -> StreamingTranscriber -> NLLB translation -> overlay / dub
+    loopback audio -> StreamingTranscriber -> NLLB translation -> overlay / dub / transcript
 
 UI components:
-  - SubtitleOverlay : translucent click-through subtitle bar (rtt/overlay.py)
-  - HudWindow       : compact 340px control panel (rtt/hud.py)
-  - SettingsWindow  : 4-tab full configuration window (rtt/settings_ui.py)
-  - System Tray     : tray menu adhering to design spec 4a (rtt/app.py)
+  - SubtitleOverlay  : translucent click-through subtitle bar (rtt/overlay.py)
+  - HudWindow        : compact 340px control panel (rtt/hud.py)
+  - SettingsWindow   : 4-tab full configuration window (rtt/settings_ui.py)
+  - TranscriptWindow : 720px real-time conversation history logger & exporter (rtt/transcript_ui.py)
+  - System Tray      : tray menu adhering to design spec 4a (rtt/app.py)
 
 Threads:
   - capture thread : reads WASAPI loopback, feeds transcriber
   - stt thread     : VAD + whisper (owned by StreamingTranscriber)
   - mt thread      : translates committed sentences from a queue
-  - Qt main thread : overlay window + HUD + Settings + system tray
+  - Qt main thread : overlay window + HUD + Settings + Transcript + system tray
 
 Run:  uv run python -m rtt.app --src en --tgt vi
 """
@@ -31,6 +32,7 @@ import time
 import numpy as np
 
 from rtt.audio import LoopbackCapture, MonoResampler16k
+from rtt.history import TranscriptManager, TranscriptSession
 from rtt.settings import AppSettings
 from rtt.stt import SttConfig, StreamingTranscriber
 from rtt.theme import apply_theme, get_theme, load_custom_fonts
@@ -39,10 +41,17 @@ DEBUG = os.environ.get("RTT_DEBUG") == "1"
 
 
 class Pipeline:
-    def __init__(self, args, bridge, settings: AppSettings | None = None) -> None:
+    def __init__(
+        self,
+        args,
+        bridge,
+        settings: AppSettings | None = None,
+        session: TranscriptSession | None = None,
+    ) -> None:
         self.args = args
         self.bridge = bridge
         self.settings = settings
+        self.session = session
         self._stop = threading.Event()
         self._mt_queue: "queue.Queue[str]" = queue.Queue()
         self._threads: list[threading.Thread] = []
@@ -127,6 +136,8 @@ class Pipeline:
             self._mt_queue.put(text)
         else:
             self.bridge.committed_changed.emit(text)
+            if self.session is not None:
+                self.session.add_entry("", text)
 
     # -------------------------------------------------------------- threads
 
@@ -227,6 +238,8 @@ class Pipeline:
                 out = text
                 print(f"[mt] error: {exc}")
             self.bridge.committed_changed.emit(out)
+            if self.session is not None:
+                self.session.add_entry(text, out)
             if self.dub is not None:
                 self.dub.speak(out)
 
@@ -253,7 +266,7 @@ class Pipeline:
 
 # ──────────────────────────────────── Tray Menu (Design 4a) ─────────
 
-def _make_tray(app, overlay, hud, settings_win, pipeline, settings: AppSettings):
+def _make_tray(app, overlay, hud, settings_win, transcript_win, pipeline, settings: AppSettings):
     from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
     from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
@@ -300,6 +313,10 @@ def _make_tray(app, overlay, hud, settings_win, pipeline, settings: AppSettings)
         status_act.setText(f"● Đang dịch · {settings.data.ui.src_lang.upper()} → {new_tgt.upper()}")
 
     lang_act.triggered.connect(toggle_lang)
+
+    # Transcript action
+    transcript_act = menu.addAction("Mở Transcript (⌃⌥E)")
+    transcript_act.triggered.connect(lambda: transcript_win.hide() if transcript_win.isVisible() else transcript_win.show())
 
     # Show HUD / Overlay actions
     hud_act = menu.addAction("Hiện/Ẩn HUD")
@@ -413,6 +430,14 @@ def main() -> None:
     # Load settings
     settings = AppSettings()
 
+    # Retention cleanup for sessions older than 7 days
+    cleaned = TranscriptManager.cleanup_old_sessions(7)
+    if cleaned > 0:
+        print(f"[app] cleaned up {cleaned} transcript session(s) older than 7 days")
+
+    # Create active transcript session
+    session = TranscriptSession(src_lang=args.src, tgt_lang=args.tgt)
+
     if args.console:
         t0 = time.time()
 
@@ -430,7 +455,7 @@ def main() -> None:
             committed_changed = _Sig("COMMIT ")
             status_changed = _Sig("STATUS ")
 
-        pipeline = Pipeline(args, _Bridge(), settings=settings)
+        pipeline = Pipeline(args, _Bridge(), settings=settings, session=session)
         pipeline.start()
         print("Console mode — Ctrl+C to stop.")
         try:
@@ -439,11 +464,13 @@ def main() -> None:
             pipeline.stop()
         return
 
+    from PySide6.QtGui import QKeySequence, QShortcut
     from PySide6.QtWidgets import QApplication
 
     from rtt.hud import HudWindow
     from rtt.overlay import OverlayBridge, SubtitleOverlay
     from rtt.settings_ui import SettingsWindow
+    from rtt.transcript_ui import TranscriptWindow
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
@@ -456,21 +483,27 @@ def main() -> None:
     overlay = SubtitleOverlay(bridge, settings=settings)
     overlay.show()
 
-    # Create HUD and Settings windows
+    # Create HUD, Settings, and Transcript windows
     hud = HudWindow(settings=settings, bridge=bridge)
     hud.show()
 
     settings_window = SettingsWindow(settings=settings)
+    transcript_window = TranscriptWindow(session=session, settings=settings)
 
     # Wire HUD signals
     hud.hud_bridge.open_settings.connect(settings_window.show)
+    hud.hud_bridge.open_transcript.connect(lambda: transcript_window.hide() if transcript_window.isVisible() else transcript_window.show())
+
+    # Keyboard shortcut Ctrl+Alt+E to toggle Transcript window
+    shortcut_transcript = QShortcut(QKeySequence("Ctrl+Alt+E"), overlay)
+    shortcut_transcript.activated.connect(lambda: transcript_window.hide() if transcript_window.isVisible() else transcript_window.show())
 
     # Pipeline
-    pipeline = Pipeline(args, bridge, settings=settings)
+    pipeline = Pipeline(args, bridge, settings=settings, session=session)
     bridge.status_changed.emit("Đang tải mô hình…")
     threading.Thread(target=pipeline.start, daemon=True, name="boot").start()
 
-    tray = _make_tray(app, overlay, hud, settings_window, pipeline, settings)  # noqa: F841
+    tray = _make_tray(app, overlay, hud, settings_window, transcript_window, pipeline, settings)  # noqa: F841
     sys.exit(app.exec())
 
 
