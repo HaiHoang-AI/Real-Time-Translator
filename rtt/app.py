@@ -2,13 +2,19 @@
 
 Wires the whole pipeline together:
 
-    loopback audio -> StreamingTranscriber -> NLLB translation -> overlay
+    loopback audio -> StreamingTranscriber -> NLLB translation -> overlay / dub
+
+UI components:
+  - SubtitleOverlay : translucent click-through subtitle bar (rtt/overlay.py)
+  - HudWindow       : compact 340px control panel (rtt/hud.py)
+  - SettingsWindow  : 4-tab full configuration window (rtt/settings_ui.py)
+  - System Tray     : tray menu adhering to design spec 4a (rtt/app.py)
 
 Threads:
-  - capture thread : reads WASAPI loopback, feeds the transcriber
+  - capture thread : reads WASAPI loopback, feeds transcriber
   - stt thread     : VAD + whisper (owned by StreamingTranscriber)
   - mt thread      : translates committed sentences from a queue
-  - Qt main thread : overlay window + system tray
+  - Qt main thread : overlay window + HUD + Settings + system tray
 
 Run:  uv run python -m rtt.app --src en --tgt vi
 """
@@ -25,29 +31,47 @@ import time
 import numpy as np
 
 from rtt.audio import LoopbackCapture, MonoResampler16k
+from rtt.settings import AppSettings
 from rtt.stt import SttConfig, StreamingTranscriber
+from rtt.theme import apply_theme, get_theme, load_custom_fonts
 
 DEBUG = os.environ.get("RTT_DEBUG") == "1"
 
 
 class Pipeline:
-    def __init__(self, args, bridge) -> None:
+    def __init__(self, args, bridge, settings: AppSettings | None = None) -> None:
         self.args = args
         self.bridge = bridge
+        self.settings = settings
         self._stop = threading.Event()
         self._mt_queue: "queue.Queue[str]" = queue.Queue()
         self._threads: list[threading.Thread] = []
         self.translator = None  # loaded in the mt thread (slow import/download)
-        self.dub = None  # DubPlayer when --dub is on (loaded in mt thread)
+        self.dub = None  # DubPlayer when --dub / settings.dub.enabled is on
+
         # Latest partial waiting for a live translation (1-slot, newest wins).
         self._live_lock = threading.Lock()
         self._live_text: str | None = None
 
+        # Determine effective parameters from CLI or settings
+        model_name = args.model
+        src_lang = args.src
+        tgt_lang = args.tgt
+        device = args.device
+
+        if settings is not None:
+            if model_name == "auto" and settings.data.model.stt_model != "auto":
+                model_name = settings.data.model.stt_model
+            if src_lang == "en" and settings.data.ui.src_lang != "en":
+                src_lang = settings.data.ui.src_lang
+            if tgt_lang == "vi" and settings.data.ui.tgt_lang != "vi":
+                tgt_lang = settings.data.ui.tgt_lang
+
         self.stt = StreamingTranscriber(
             SttConfig(
-                model_name=args.model,
-                language=None if args.src == "auto" else args.src,
-                device=args.device,
+                model_name=model_name,
+                language=None if src_lang == "auto" else src_lang,
+                device=device,
             ),
             on_partial=self._on_partial,
             on_commit=self._on_commit,
@@ -55,43 +79,51 @@ class Pipeline:
 
     def _src_lang(self) -> str:
         """Effective source language (Whisper's detection in auto mode)."""
-        if self.args.src == "auto":
+        src = self.args.src
+        if self.settings and src == "en" and self.settings.data.ui.src_lang:
+            src = self.settings.data.ui.src_lang
+        if src == "auto":
             return self.stt.detected_language or "en"
-        return self.args.src or "en"
+        return src or "en"
+
+    def _tgt_lang(self) -> str:
+        tgt = self.args.tgt
+        if self.settings and self.settings.data.ui.tgt_lang:
+            tgt = self.settings.data.ui.tgt_lang
+        return tgt or "vi"
 
     # ------------------------------------------------------------ callbacks
 
     def _on_partial(self, text: str) -> None:
         self.bridge.partial_changed.emit(("… " + text) if text else "")
-        # Queue the newest partial for live translation (translated whenever
-        # the MT thread has a free moment; older partials are discarded).
-        # Fragments under 4 words are skipped: translating "So." into a
-        # full-width subtitle line just makes the text jitter.
+        # Queue the newest partial for live translation
+        tgt = self._tgt_lang()
+        src = self._src_lang()
         if (
             text
             and len(text.split()) >= 4
-            and self.args.tgt != self.args.src
+            and tgt != src
             and not self.args.no_live
         ):
             with self._live_lock:
                 self._live_text = text
 
     def _on_commit(self, text: str, _latency: float) -> None:
-        # The early-commit safety margin re-hears a fraction of the previous
-        # sentence's tail; if this commit starts with a fragment that already
-        # appeared in the previous commit, strip it.
+        # Strip duplicate headers from safety margins
         prev = getattr(self, "_last_commit_text", None)
         first_dot = text.find(". ")
         if prev and 0 <= first_dot < len(text) - 2:
             head = text[: first_dot + 1].strip(" .…").lower()
             if head and head in prev.lower():
                 text = text[first_dot + 2:].strip()
-        # Whisper sometimes re-emits the previous sentence verbatim
-        # (hallucination on near-silence) — drop exact repeats.
+
         if not text or text == prev:
             return
         self._last_commit_text = text
-        if self.args.tgt and self.args.tgt != self.args.src:
+
+        tgt = self._tgt_lang()
+        src = self._src_lang()
+        if tgt and tgt != src:
             self._mt_queue.put(text)
         else:
             self.bridge.committed_changed.emit(text)
@@ -104,14 +136,10 @@ class Pipeline:
         cap.start()
         gate_tail_until = 0.0
 
-        # WASAPI loopback starves when nothing is playing, which would freeze
-        # the STT timeline and break sentence-commit. We keep our own clock:
-        # whenever the device under-delivers, we feed synthetic silence so the
-        # buffer keeps flowing at real-time pace.
         from rtt.stt import RATE as STT_RATE
 
         chunk_s = cap.chunk_frames / cap.rate
-        pushed = 0  # 16 kHz samples pushed so far
+        pushed = 0
         t_start = time.monotonic()
         try:
             while not self._stop.is_set():
@@ -131,11 +159,9 @@ class Pipeline:
                     self.stt.push(chunk)
                     pushed += chunk.size
 
-                # Top up with silence if we're behind the wall clock (device
-                # starving or frames dropped by the gate).
                 expected = int((time.monotonic() - t_start) * STT_RATE)
                 deficit = expected - pushed
-                if deficit >= STT_RATE // 10:  # >100 ms behind
+                if deficit >= STT_RATE // 10:
                     if not gated:
                         self.stt.push(np.zeros(deficit, dtype=np.float32))
                     pushed += deficit
@@ -148,7 +174,7 @@ class Pipeline:
         self.bridge.status_changed.emit("Đang tải mô hình dịch…")
         try:
             self.translator = NllbTranslator()
-        except Exception as exc:  # noqa: BLE001 - run subtitle-only rather than die
+        except Exception as exc:  # noqa: BLE001
             print(f"[mt] FAILED to load translator, passing text through: {exc}")
             self.translator = None
             self.bridge.status_changed.emit("")
@@ -159,27 +185,31 @@ class Pipeline:
                 except queue.Empty:
                     continue
             return
-        if self.args.dub:
+
+        is_dub = self.args.dub or (self.settings and self.settings.data.dub.enabled)
+        if is_dub:
             from rtt.dub import DubPlayer
 
             self.bridge.status_changed.emit("Đang tải giọng thuyết minh…")
-            self.dub = DubPlayer()
+            duck_level = self.settings.data.dub.ducking if self.settings else 0.18
+            max_speed = self.settings.data.dub.max_speed if self.settings else 1.45
+            self.dub = DubPlayer(duck_level=duck_level, max_speed=max_speed)
             self.dub.start()
+
         self.bridge.status_changed.emit("")
         self._mt_ready.set()
         while not self._stop.is_set():
             src = self._src_lang()
+            tgt = self._tgt_lang()
             try:
                 text = self._mt_queue.get(timeout=0.15)
             except queue.Empty:
-                # No committed sentence pending: live-translate the newest
-                # partial so the subtitle keeps moving during long sentences.
                 with self._live_lock:
                     live, self._live_text = self._live_text, None
                 if live:
                     try:
                         t0 = time.perf_counter()
-                        out = self.translator.translate(live, src, self.args.tgt, beam=1)
+                        out = self.translator.translate(live, src, tgt, beam=1)
                         if DEBUG:
                             print(f"[dbg] mt live {len(live)} chars in "
                                   f"{time.perf_counter()-t0:.2f}s", flush=True)
@@ -189,11 +219,11 @@ class Pipeline:
                 continue
             try:
                 t0 = time.perf_counter()
-                out = self.translator.translate(text, src, self.args.tgt, beam=4)
+                out = self.translator.translate(text, src, tgt, beam=4)
                 if DEBUG:
                     print(f"[dbg] mt commit {len(text)} chars in "
                           f"{time.perf_counter()-t0:.2f}s", flush=True)
-            except Exception as exc:  # noqa: BLE001 - never kill the loop
+            except Exception as exc:  # noqa: BLE001
                 out = text
                 print(f"[mt] error: {exc}")
             self.bridge.committed_changed.emit(out)
@@ -203,9 +233,6 @@ class Pipeline:
     # ------------------------------------------------------------ lifecycle
 
     def start(self) -> None:
-        # Load the translator BEFORE audio starts flowing: loading NLLB onto
-        # the GPU while Whisper is mid-transcription can hard-crash the
-        # process (native OOM during the load spike, no traceback).
         self._mt_ready = threading.Event()
         mt = threading.Thread(target=self._mt_loop, daemon=True, name="mt")
         mt.start()
@@ -224,7 +251,9 @@ class Pipeline:
             self.dub.stop()
 
 
-def _make_tray(app, overlay, pipeline):
+# ──────────────────────────────────── Tray Menu (Design 4a) ─────────
+
+def _make_tray(app, overlay, hud, settings_win, pipeline, settings: AppSettings):
     from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
     from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
@@ -239,9 +268,53 @@ def _make_tray(app, overlay, pipeline):
 
     tray = QSystemTrayIcon(QIcon(pixmap))
     menu = QMenu()
+
+    # Status header (disabled item per design 4a)
+    src = settings.data.ui.src_lang.upper()
+    tgt = settings.data.ui.tgt_lang.upper()
+    status_act = menu.addAction(f"● Đang dịch · {src} → {tgt}")
+    status_act.setEnabled(False)
+
+    menu.addSeparator()
+
+    # Mode action
+    mode_str = "DUB" if settings.data.dub.enabled else "Phụ đề"
+    mode_act = menu.addAction(f"Mode: {mode_str} (⌃⌥D)")
+
+    def toggle_mode() -> None:
+        new_dub = not settings.data.dub.enabled
+        settings.update(dub={"enabled": new_dub})
+        mode_act.setText(f"Mode: {'DUB' if new_dub else 'Phụ đề'} (⌃⌥D)")
+
+    mode_act.triggered.connect(toggle_mode)
+
+    # Target language action
+    tgt_name = "Tiếng Việt" if settings.data.ui.tgt_lang == "vi" else "English"
+    lang_act = menu.addAction(f"Ngôn ngữ đích: {tgt_name} ▸")
+
+    def toggle_lang() -> None:
+        new_tgt = "en" if settings.data.ui.tgt_lang == "vi" else "vi"
+        settings.update(ui={"tgt_lang": new_tgt})
+        new_name = "Tiếng Việt" if new_tgt == "vi" else "English"
+        lang_act.setText(f"Ngôn ngữ đích: {new_name} ▸")
+        status_act.setText(f"● Đang dịch · {settings.data.ui.src_lang.upper()} → {new_tgt.upper()}")
+
+    lang_act.triggered.connect(toggle_lang)
+
+    # Show HUD / Overlay actions
+    hud_act = menu.addAction("Hiện/Ẩn HUD")
+    hud_act.triggered.connect(lambda: hud.hide() if hud.isVisible() else hud.show())
+
     move_action = menu.addAction("Di chuyển phụ đề (bật/tắt)")
     move_action.triggered.connect(overlay.toggle_move_mode)
+
     menu.addSeparator()
+
+    # Settings action
+    settings_act = menu.addAction("Cài đặt…")
+    settings_act.triggered.connect(settings_win.show)
+
+    # Quit action
     quit_action = menu.addAction("Thoát")
 
     def do_quit() -> None:
@@ -252,6 +325,21 @@ def _make_tray(app, overlay, pipeline):
     quit_action.triggered.connect(do_quit)
     tray.setContextMenu(menu)
     tray.setToolTip("Real-Time Translate")
+
+    # Connect settings changed to update tray text
+    def update_tray() -> None:
+        s_src = settings.data.ui.src_lang.upper()
+        s_tgt = settings.data.ui.tgt_lang.upper()
+        status_act.setText(f"● Đang dịch · {s_src} → {s_tgt}")
+        mode_act.setText(f"Mode: {'DUB' if settings.data.dub.enabled else 'Phụ đề'} (⌃⌥D)")
+        t_name = "Tiếng Việt" if settings.data.ui.tgt_lang == "vi" else "English"
+        lang_act.setText(f"Ngôn ngữ đích: {t_name} ▸")
+        t_colors = get_theme(settings.data.ui.theme)
+        apply_theme(menu, t_colors, settings.data.ui.use_custom_fonts)
+
+    settings.changed.connect(update_tray)
+    update_tray()
+
     tray.show()
     return tray
 
@@ -265,41 +353,43 @@ def _resolve_model(name: str) -> str:
 
         snapshot_download("Systran/faster-whisper-large-v3", local_files_only=True)
         return "large-v3"
-    except Exception:  # noqa: BLE001 - not downloaded yet
+    except Exception:
         return "small"
 
 
 def _takeover_single_instance() -> None:
     """Kill any older rtt.app instance so relaunching 'just works'."""
-    import psutil  # shipped with pycaw
+    import tempfile
+    import psutil
+    from pathlib import Path
 
-    # Our own process FAMILY must be excluded: on Windows the venv shim
-    # python.exe spawns the real interpreter as a child with the same command
-    # line, so a naive scan would kill our own parent (and us with it).
+    pid_file = Path(tempfile.gettempdir()) / "rtt_app.pid"
     me = psutil.Process()
     family = {me.pid}
     try:
-        family.update(p.pid for p in me.parents())
-        family.update(p.pid for p in me.children(recursive=True))
-    except psutil.Error:
+        for p in me.parents():
+            family.add(p.pid)
+        for p in me.children(recursive=True):
+            family.add(p.pid)
+    except Exception:
         pass
 
-    killed = False
-    for proc in psutil.process_iter(["pid", "name", "cmdline"]):
+    if pid_file.exists():
         try:
-            if proc.pid in family or proc.info["name"] not in ("python.exe", "pythonw.exe"):
-                continue
-            cmdline = " ".join(proc.info["cmdline"] or ())
-            if "rtt.app" in cmdline:
-                print(f"[app] taking over from old instance pid={proc.pid}")
-                proc.kill()
-                killed = True
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-    if killed:
-        # Give the dying process time to release its VRAM: loading our models
-        # while its allocations are still resident can OOM-crash natively.
-        time.sleep(3.0)
+            old_pid = int(pid_file.read_text("utf-8").strip())
+            if old_pid not in family and psutil.pid_exists(old_pid):
+                proc = psutil.Process(old_pid)
+                if proc.is_running() and proc.name().lower() in ("python.exe", "pythonw.exe"):
+                    print(f"[app] taking over from old instance pid={old_pid}")
+                    proc.kill()
+                    time.sleep(1.5)
+        except Exception as exc:
+            print(f"[app] takeover note: {exc}")
+
+    try:
+        pid_file.write_text(str(me.pid), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def main() -> None:
@@ -320,6 +410,9 @@ def main() -> None:
     print(f"[app] whisper model: {args.model}")
     _takeover_single_instance()
 
+    # Load settings
+    settings = AppSettings()
+
     if args.console:
         t0 = time.time()
 
@@ -329,7 +422,6 @@ def main() -> None:
 
             def emit(self, text):
                 if text:
-                    # One single write per line: safe against thread interleaving.
                     sys.stdout.write(f"[{time.time() - t0:7.2f}s] {self.tag} {text}\n")
                     sys.stdout.flush()
 
@@ -338,7 +430,7 @@ def main() -> None:
             committed_changed = _Sig("COMMIT ")
             status_changed = _Sig("STATUS ")
 
-        pipeline = Pipeline(args, _Bridge())
+        pipeline = Pipeline(args, _Bridge(), settings=settings)
         pipeline.start()
         print("Console mode — Ctrl+C to stop.")
         try:
@@ -349,19 +441,36 @@ def main() -> None:
 
     from PySide6.QtWidgets import QApplication
 
+    from rtt.hud import HudWindow
     from rtt.overlay import OverlayBridge, SubtitleOverlay
+    from rtt.settings_ui import SettingsWindow
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+
+    # Load custom fonts after QApplication is initialized
+    font_ok = load_custom_fonts()
+    print(f"[app] custom fonts loaded: {font_ok}")
+
     bridge = OverlayBridge()
-    overlay = SubtitleOverlay(bridge)
+    overlay = SubtitleOverlay(bridge, settings=settings)
     overlay.show()
 
-    pipeline = Pipeline(args, bridge)
+    # Create HUD and Settings windows
+    hud = HudWindow(settings=settings, bridge=bridge)
+    hud.show()
+
+    settings_window = SettingsWindow(settings=settings)
+
+    # Wire HUD signals
+    hud.hud_bridge.open_settings.connect(settings_window.show)
+
+    # Pipeline
+    pipeline = Pipeline(args, bridge, settings=settings)
     bridge.status_changed.emit("Đang tải mô hình…")
     threading.Thread(target=pipeline.start, daemon=True, name="boot").start()
 
-    tray = _make_tray(app, overlay, pipeline)  # noqa: F841 - keep alive
+    tray = _make_tray(app, overlay, hud, settings_window, pipeline, settings)  # noqa: F841
     sys.exit(app.exec())
 
 

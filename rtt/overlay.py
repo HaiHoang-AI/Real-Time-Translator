@@ -13,9 +13,14 @@ worker thread can safely post text.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import QObject, QPoint, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QGuiApplication, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QGuiApplication, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+if TYPE_CHECKING:
+    from rtt.settings import AppSettings
 
 
 class OverlayBridge(QObject):
@@ -30,20 +35,32 @@ class _OutlinedLabel(QWidget):
     """Text with a dark outline so it stays readable on any background."""
 
     def __init__(
-        self, point_size: int, color: str, weight=QFont.DemiBold, max_lines: int = 2
+        self, point_size: int, color: str, weight=QFont.DemiBold, max_lines: int = 2,
+        font_family: str = "Segoe UI",
     ) -> None:
         super().__init__()
         self._text = ""
-        self._font = QFont("Segoe UI", point_size, weight)
+        self._point_size = point_size
+        self._weight = weight
+        self._font = QFont(font_family, point_size, weight)
         self._color = QColor(color)
         self._max_lines = max_lines
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         # Reserve room for max_lines of text so wrapped lines never paint
         # outside the widget (they would be clipped -> "missing words").
-        from PySide6.QtGui import QFontMetrics
+        self._recalc_height()
 
+    def _recalc_height(self) -> None:
         line_h = QFontMetrics(self._font).height()
-        self.setFixedHeight(line_h * max_lines + 10)
+        self.setFixedHeight(line_h * self._max_lines + 10)
+
+    def set_font(self, family: str, point_size: int | None = None) -> None:
+        """Change font family and optionally size; recalculates widget height."""
+        if point_size is not None:
+            self._point_size = point_size
+        self._font = QFont(family, self._point_size, self._weight)
+        self._recalc_height()
+        self.update()
 
     def set_text(self, text: str) -> None:
         if text != self._text:
@@ -88,8 +105,9 @@ class _OutlinedLabel(QWidget):
 
 
 class SubtitleOverlay(QWidget):
-    def __init__(self, bridge: OverlayBridge) -> None:
+    def __init__(self, bridge: OverlayBridge, settings: "AppSettings | None" = None) -> None:
         super().__init__()
+        self._settings = settings
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
@@ -99,28 +117,81 @@ class SubtitleOverlay(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self._click_through(True)
 
-        self.main_line = _OutlinedLabel(20, "#ffffff", max_lines=3)
-        self.partial_line = _OutlinedLabel(13, "#d0d0d0", weight=QFont.Normal, max_lines=1)
+        # Resolve initial font family from settings.
+        use_custom = settings.data.ui.use_custom_fonts if settings else False
+        try:
+            from rtt.theme import font_ui
+            ui_font = font_ui(use_custom)
+        except Exception:
+            ui_font = "Segoe UI"
+
+        # Initial font size from settings (or default 20pt / 13pt).
+        main_pt = settings.data.display.font_size if settings else 20
+        # Partial line is always ~55% of main.
+        partial_pt = max(10, int(main_pt * 0.55))
+
+        self.main_line = _OutlinedLabel(main_pt, "#ffffff", max_lines=3, font_family=ui_font)
+        self.partial_line = _OutlinedLabel(partial_pt, "#d0d0d0", weight=QFont.Normal,
+                                          max_lines=1, font_family=ui_font)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 6, 12, 6)
         layout.setSpacing(4)
+        # Show/hide partial line based on settings.
+        self._show_original = settings.data.display.show_original if settings else True
+        self.partial_line.setVisible(self._show_original)
         layout.addWidget(self.partial_line)
         layout.addWidget(self.main_line)
 
-        screen = QGuiApplication.primaryScreen().availableGeometry()
-        width = int(screen.width() * 0.72)
-        height = self.main_line.height() + self.partial_line.height() + 20
-        self.resize(width, height)
-        self.move(
-            screen.x() + (screen.width() - width) // 2,
-            screen.y() + screen.height() - height - 48,
-        )
+        self._apply_position(settings)
 
         bridge.partial_changed.connect(self.partial_line.set_text)
         bridge.committed_changed.connect(self.main_line.set_text)
         bridge.status_changed.connect(self._show_status)
         self._drag_origin: QPoint | None = None
+
+        # React to settings changes.
+        if settings is not None:
+            settings.changed.connect(self._on_settings_changed)
+
+    def _apply_position(self, settings: "AppSettings | None" = None) -> None:
+        """Position the overlay on the correct screen at the correct location."""
+        screen = QGuiApplication.primaryScreen().availableGeometry()
+        width = int(screen.width() * 0.72)
+        height = self.main_line.height() + self.partial_line.height() + 20
+        self.resize(width, height)
+
+        pos = settings.data.display.position if settings else "bottom"
+        if pos == "top":
+            y = screen.y() + 32
+        elif pos == "center":
+            y = screen.y() + (screen.height() - height) // 2
+        else:  # bottom
+            y = screen.y() + screen.height() - height - 48
+
+        self.move(screen.x() + (screen.width() - width) // 2, y)
+
+    def _on_settings_changed(self) -> None:
+        """Re-apply display settings when they change."""
+        s = self._settings
+        if s is None:
+            return
+
+        try:
+            from rtt.theme import font_ui
+            ui_font = font_ui(s.data.ui.use_custom_fonts)
+        except Exception:
+            ui_font = "Segoe UI"
+
+        main_pt = s.data.display.font_size
+        partial_pt = max(10, int(main_pt * 0.55))
+        self.main_line.set_font(ui_font, main_pt)
+        self.partial_line.set_font(ui_font, partial_pt)
+
+        self._show_original = s.data.display.show_original
+        self.partial_line.setVisible(self._show_original)
+
+        self._apply_position(s)
 
     # ------------------------------------------------------------ behaviors
 
