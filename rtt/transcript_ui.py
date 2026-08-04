@@ -317,20 +317,20 @@ class TranscriptWindow(QWidget):
         container_layout.addWidget(header)
         
         # 2. Body Layout
-        body = QWidget()
+        body = QWidget(self.container)
         body.setStyleSheet("border: none;")
         body_layout = QHBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
         
         # Left Panel (Transcript list)
-        left_wrapper = QWidget()
-        left_wrapper.setStyleSheet("border: none; background: transparent;")
-        left_layout = QVBoxLayout(left_wrapper)
+        self.left_wrapper = QWidget(body)
+        self.left_wrapper.setStyleSheet("border: none; background: transparent;")
+        left_layout = QVBoxLayout(self.left_wrapper)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        self.scroll_area = QScrollArea()
+        self.scroll_area = QScrollArea(self.left_wrapper)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
         self.scroll_area.setStyleSheet(f"""
@@ -348,17 +348,17 @@ class TranscriptWindow(QWidget):
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
         """)
         
-        self.entries_container = QWidget()
+        self.entries_container = QWidget(self.scroll_area)
         self.entries_layout = QVBoxLayout(self.entries_container)
         self.entries_layout.setContentsMargins(16, 16, 16, 16)
         self.entries_layout.setSpacing(4)
         self.entries_layout.setAlignment(Qt.AlignTop)
-        
+
         self.scroll_area.setWidget(self.entries_container)
         left_layout.addWidget(self.scroll_area, 1)
 
         # Floating "↓ Câu mới" Pill Button
-        self.new_items_btn = QPushButton("↓ Câu mới", left_wrapper)
+        self.new_items_btn = QPushButton("↓ Câu mới", self.left_wrapper)
         self.new_items_btn.setFont(font_ui(500))
         self.new_items_btn.setCursor(Qt.PointingHandCursor)
         self.new_items_btn.setFixedSize(110, 30)
@@ -378,15 +378,15 @@ class TranscriptWindow(QWidget):
         self.new_items_btn.hide()
         self.new_items_btn.clicked.connect(self._on_click_new_items)
 
-        body_layout.addWidget(left_wrapper, 1)
+        body_layout.addWidget(self.left_wrapper, 1)
 
         # Smooth scrollbar animation
-        self._scroll_anim = QPropertyAnimation(self.scroll_area.verticalScrollBar(), b"value", self)
+        vbar = self.scroll_area.verticalScrollBar()
+        self._scroll_anim = QPropertyAnimation(vbar, b"value", vbar)
         self._scroll_anim.setDuration(220)
         self._scroll_anim.setEasingCurve(QEasingCurve.OutCubic)
 
         # Detect user scroll position
-        vbar = self.scroll_area.verticalScrollBar()
         vbar.valueChanged.connect(self._on_scroll_changed)
         
         # Right Sidebar
@@ -476,8 +476,11 @@ class TranscriptWindow(QWidget):
 
     def set_session(self, session: TranscriptSession):
         if self.session:
-            self.session.entry_added.disconnect(self.on_entry_added)
-            self.session.session_updated.disconnect(self.update_meta)
+            try:
+                self.session.entry_added.disconnect(self.on_entry_added)
+                self.session.session_updated.disconnect(self.update_meta)
+            except Exception:
+                pass
             
         self.session = session
         if self.session:
@@ -485,12 +488,10 @@ class TranscriptWindow(QWidget):
             self.session.session_updated.connect(self.update_meta)
             self.reload_entries()
             self.update_meta()
-
     def reload_entries(self):
         if not hasattr(self, "entries_layout") or not self.entries_layout:
             return
 
-        # Safely remove old widgets
         for w in getattr(self, "entry_widgets", []):
             try:
                 self.entries_layout.removeWidget(w)
@@ -563,7 +564,8 @@ class TranscriptWindow(QWidget):
 
     def add_entry_widget(self, entry: TranscriptEntry, is_latest: bool):
         w = TranscriptEntryWidget(entry, self.theme, is_latest)
-        self.entries_layout.addWidget(w)
+        if hasattr(self, "entries_layout") and self.entries_layout:
+            self.entries_layout.addWidget(w)
         self.entry_widgets.append(w)
         
         # Apply current filter
@@ -630,8 +632,10 @@ class TranscriptWindow(QWidget):
                             s = int(ts % 60)
                             ms = int((ts % 1) * 1000)
                             return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-                        start = format_ts(entry.start_time)
-                        end = format_ts(entry.end_time if hasattr(entry, 'end_time') else entry.start_time + 2)
+                        st = getattr(entry, 'start_time_s', getattr(entry, 'start_time', 0.0))
+                        et = getattr(entry, 'end_time_s', getattr(entry, 'end_time', st + 2.0))
+                        start = format_ts(st)
+                        end = format_ts(et)
                         content.append(f"{start} --> {end}")
                         
                         text = []
@@ -645,8 +649,9 @@ class TranscriptWindow(QWidget):
                         # TXT / MD
                         parts = []
                         if inc_ts:
-                            mins = int(entry.start_time // 60)
-                            secs = int(entry.start_time % 60)
+                            st = getattr(entry, 'start_time_s', getattr(entry, 'start_time', 0.0))
+                            mins = int(st // 60)
+                            secs = int(st % 60)
                             parts.append(f"[{mins:02d}:{secs:02d}]")
                         
                         text = []
@@ -669,12 +674,12 @@ class TranscriptWindow(QWidget):
     # Allow dragging frameless window from header
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton and event.pos().y() < 50:
-            self.drag_pos = event.globalPos() - self.frameGeometry().topLeft()
+            self.drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent):
         if event.buttons() == Qt.LeftButton and self.drag_pos is not None:
-            self.move(event.globalPos() - self.drag_pos)
+            self.move(event.globalPosition().toPoint() - self.drag_pos)
             event.accept()
             
     def mouseReleaseEvent(self, event: QMouseEvent):
