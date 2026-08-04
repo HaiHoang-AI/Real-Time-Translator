@@ -5,9 +5,9 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QStackedWidget, QSlider, QCheckBox, 
     QComboBox, QScrollArea, QLineEdit, QButtonGroup, 
-    QGraphicsDropShadowEffect, QFrame, QSizePolicy
+    QGraphicsDropShadowEffect, QFrame, QSizePolicy, QSizeGrip
 )
-from PySide6.QtCore import Qt, Signal, Property, QRect, QPoint, QSize, QRectF
+from PySide6.QtCore import Qt, Signal, Property, QRect, QPoint, QSize, QRectF, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath, QFont, QLinearGradient
 
 try:
@@ -94,26 +94,60 @@ class ToggleSwitch(QCheckBox):
     def __init__(self, theme: ThemeColors, parent=None):
         super().__init__(parent)
         self.theme = theme
-        self.setFixedSize(36, 20)
+        self.setFixedSize(40, 22)
         self.setCursor(Qt.PointingHandCursor)
+        self._thumb_pos = 1.0 if self.isChecked() else 0.0
+
+        self._anim = QPropertyAnimation(self, b"thumbPos", self)
+        self._anim.setDuration(180)
+        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self.toggled.connect(self._start_anim)
+
+    def _get_thumb_pos(self) -> float:
+        return self._thumb_pos
+
+    def _set_thumb_pos(self, pos: float) -> None:
+        self._thumb_pos = pos
+        self.update()
+
+    thumbPos = Property(float, _get_thumb_pos, _set_thumb_pos)
+
+    def _start_anim(self, checked: bool) -> None:
+        self._anim.stop()
+        self._anim.setStartValue(self._thumb_pos)
+        self._anim.setEndValue(1.0 if checked else 0.0)
+        self._anim.start()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
+
         rect = QRectF(0, 0, self.width(), self.height())
         path = QPainterPath()
-        path.addRoundedRect(rect, 10, 10)
-        
-        if self.isChecked():
-            painter.fillPath(path, QColor(self.theme.teal))
-            thumb_rect = QRectF(self.width() - 18, 2, 16, 16)
-        else:
-            painter.fillPath(path, QColor(self.theme.raised))
-            thumb_rect = QRectF(2, 2, 16, 16)
-            
+        path.addRoundedRect(rect, 11, 11)
+
+        off_col = QColor(self.theme.raised)
+        on_col = QColor(self.theme.teal)
+        bg_r = off_col.red() + (on_col.red() - off_col.red()) * self._thumb_pos
+        bg_g = off_col.green() + (on_col.green() - off_col.green()) * self._thumb_pos
+        bg_b = off_col.blue() + (on_col.blue() - off_col.blue()) * self._thumb_pos
+        bg_col = QColor(int(bg_r), int(bg_g), int(bg_b))
+
+        painter.fillPath(path, bg_col)
+
+        pen = QPen(QColor(self.theme.border))
+        pen.setWidthF(1.0)
+        painter.setPen(pen)
+        painter.drawPath(path)
+
+        min_x = 3.0
+        max_x = self.width() - 19.0
+        thumb_x = min_x + (max_x - min_x) * self._thumb_pos
+        thumb_rect = QRectF(thumb_x, 3.0, 16.0, 16.0)
+
         thumb_path = QPainterPath()
         thumb_path.addRoundedRect(thumb_rect, 8, 8)
+        painter.setPen(Qt.NoPen)
         painter.fillPath(thumb_path, QColor(self.theme.text))
         painter.end()
 
@@ -742,7 +776,8 @@ class SettingsWindow(QWidget):
         
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(680, 560)
+        self.setMinimumSize(560, 420)
+        self.resize(680, 560)
         
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -756,6 +791,34 @@ class SettingsWindow(QWidget):
         self.content_area.setStyleSheet(f"background-color: {self.theme.surface}; border-top-right-radius: 14px; border-bottom-right-radius: 14px;")
         content_layout = QVBoxLayout(self.content_area)
         content_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Top Header Bar with Window Control Buttons (Minimize, Maximize, Close)
+        win_control_bar = QWidget()
+        win_control_bar.setFixedHeight(36)
+        ctrl_layout = QHBoxLayout(win_control_bar)
+        ctrl_layout.setContentsMargins(0, 4, 12, 0)
+        ctrl_layout.setSpacing(6)
+        ctrl_layout.addStretch(1)
+
+        btn_min = QPushButton("─")
+        btn_min.setFixedSize(28, 24)
+        btn_min.setProperty("class", "ghost")
+        btn_min.clicked.connect(self.showMinimized)
+        ctrl_layout.addWidget(btn_min)
+
+        btn_max = QPushButton("□")
+        btn_max.setFixedSize(28, 24)
+        btn_max.setProperty("class", "ghost")
+        btn_max.clicked.connect(self._toggle_maximize)
+        ctrl_layout.addWidget(btn_max)
+
+        btn_close = QPushButton("✕")
+        btn_close.setFixedSize(28, 24)
+        btn_close.setProperty("class", "ghost")
+        btn_close.clicked.connect(self.close)
+        ctrl_layout.addWidget(btn_close)
+
+        content_layout.addWidget(win_control_bar)
         
         self.stack = QStackedWidget()
         self.stack.addWidget(DisplayTab(self.theme, self.settings))
@@ -763,12 +826,27 @@ class SettingsWindow(QWidget):
         self.stack.addWidget(GlossaryTab(self.theme, self.settings))
         self.stack.addWidget(DubTab(self.theme, self.settings))
         
-        content_layout.addWidget(self.stack)
+        content_layout.addWidget(self.stack, 1)
+
+        # QSizeGrip at bottom-right corner for smooth resizing
+        grip_layout = QHBoxLayout()
+        grip_layout.setContentsMargins(0, 0, 4, 4)
+        grip_layout.addStretch(1)
+        grip = QSizeGrip(self)
+        grip.setFixedSize(14, 14)
+        grip_layout.addWidget(grip)
+        content_layout.addLayout(grip_layout)
         
         main_layout.addWidget(self.sidebar)
-        main_layout.addWidget(self.content_area)
+        main_layout.addWidget(self.content_area, 1)
         
         self._drag_pos = None
+
+    def _toggle_maximize(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
 
     def _set_tab(self, idx):
         self.stack.setCurrentIndex(idx)

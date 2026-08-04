@@ -3,12 +3,12 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, Signal, Slot, QSize, QPoint, QRect
+from PySide6.QtCore import Qt, Signal, Slot, QSize, QPoint, QRect, QPropertyAnimation, QEasingCurve, Property
 from PySide6.QtGui import QFont, QColor, QPainter, QPainterPath, QMouseEvent, QPen, QBrush
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QLineEdit, QPushButton, QScrollArea, QFrame, QCheckBox, 
-    QFileDialog, QSizePolicy, QButtonGroup, QScrollArea, QScrollBar
+    QFileDialog, QSizePolicy, QButtonGroup, QScrollBar, QSizeGrip
 )
 
 from rtt.theme import get_theme, ThemeColors, DARK, font_ui as _font_ui_str, font_mono as _font_mono_str, apply_theme
@@ -192,10 +192,13 @@ class TranscriptWindow(QWidget):
         self.settings = settings
         self.theme = get_theme(DARK)
         self.drag_pos = None
+        self._user_scrolled_up = False
+        self._unread_count = 0
         
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedSize(720, 520)
+        self.setMinimumSize(560, 380)
+        self.resize(720, 520)
         
         self.setup_ui()
         self.set_session(session)
@@ -277,17 +280,32 @@ class TranscriptWindow(QWidget):
         """)
         export_btn.clicked.connect(self.export_transcript)
         header_layout.addWidget(export_btn)
+
+        # Window Controls: Minimize, Maximize/Restore, Close
+        btn_min = QPushButton("─")
+        btn_min.setFixedSize(28, 28)
+        btn_min.setCursor(Qt.PointingHandCursor)
+        btn_min.setStyleSheet(f"QPushButton {{ background: transparent; color: {self.theme.text}; border: none; border-radius: 14px; }} QPushButton:hover {{ background: {self.theme.border}; }}")
+        btn_min.clicked.connect(self.showMinimized)
+        header_layout.addWidget(btn_min)
+
+        btn_max = QPushButton("□")
+        btn_max.setFixedSize(28, 28)
+        btn_max.setCursor(Qt.PointingHandCursor)
+        btn_max.setStyleSheet(f"QPushButton {{ background: transparent; color: {self.theme.text}; border: none; border-radius: 14px; }} QPushButton:hover {{ background: {self.theme.border}; }}")
+        btn_max.clicked.connect(self._toggle_maximize)
+        header_layout.addWidget(btn_max)
         
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(30, 30)
+        close_btn.setFixedSize(28, 28)
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: transparent;
                 color: {self.theme.text};
                 border: none;
-                border-radius: 15px;
-                font-size: 14px;
+                border-radius: 14px;
+                font-size: 13px;
             }}
             QPushButton:hover {{
                 background-color: {self.theme.border};
@@ -306,6 +324,12 @@ class TranscriptWindow(QWidget):
         body_layout.setSpacing(0)
         
         # Left Panel (Transcript list)
+        left_wrapper = QWidget()
+        left_wrapper.setStyleSheet("border: none; background: transparent;")
+        left_layout = QVBoxLayout(left_wrapper)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
@@ -331,7 +355,39 @@ class TranscriptWindow(QWidget):
         self.entries_layout.setAlignment(Qt.AlignTop)
         
         self.scroll_area.setWidget(self.entries_container)
-        body_layout.addWidget(self.scroll_area, 1)
+        left_layout.addWidget(self.scroll_area, 1)
+
+        # Floating "↓ Câu mới" Pill Button
+        self.new_items_btn = QPushButton("↓ Câu mới", left_wrapper)
+        self.new_items_btn.setFont(font_ui(500))
+        self.new_items_btn.setCursor(Qt.PointingHandCursor)
+        self.new_items_btn.setFixedSize(110, 30)
+        self.new_items_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.accent};
+                color: {self.theme.accent_text};
+                border: 1px solid {self.theme.border_strong};
+                border-radius: 15px;
+                font-size: 11.5px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                opacity: 0.92;
+            }}
+        """)
+        self.new_items_btn.hide()
+        self.new_items_btn.clicked.connect(self._on_click_new_items)
+
+        body_layout.addWidget(left_wrapper, 1)
+
+        # Smooth scrollbar animation
+        self._scroll_anim = QPropertyAnimation(self.scroll_area.verticalScrollBar(), b"value", self)
+        self._scroll_anim.setDuration(220)
+        self._scroll_anim.setEasingCurve(QEasingCurve.OutCubic)
+
+        # Detect user scroll position
+        vbar = self.scroll_area.verticalScrollBar()
+        vbar.valueChanged.connect(self._on_scroll_changed)
         
         # Right Sidebar
         sidebar = QFrame()
@@ -405,7 +461,15 @@ class TranscriptWindow(QWidget):
         
         body_layout.addWidget(sidebar)
         
-        container_layout.addWidget(body)
+        # SizeGrip at bottom right
+        grip_layout = QHBoxLayout()
+        grip_layout.setContentsMargins(0, 0, 4, 4)
+        grip_layout.addStretch(1)
+        grip = QSizeGrip(self)
+        grip.setFixedSize(14, 14)
+        grip_layout.addWidget(grip)
+        container_layout.addLayout(grip_layout)
+
         main_layout.addWidget(self.container)
         
         self.populate_past_sessions()
@@ -423,32 +487,79 @@ class TranscriptWindow(QWidget):
             self.update_meta()
 
     def reload_entries(self):
-        # Clear existing
-        while self.entries_layout.count():
-            child = self.entries_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-                
+        if not hasattr(self, "entries_layout") or not self.entries_layout:
+            return
+
+        # Safely remove old widgets
+        for w in getattr(self, "entry_widgets", []):
+            try:
+                self.entries_layout.removeWidget(w)
+                w.deleteLater()
+            except Exception:
+                pass
+
         self.entry_widgets = []
         if self.session:
             for i, entry in enumerate(self.session.entries):
                 is_latest = (i == len(self.session.entries) - 1)
                 self.add_entry_widget(entry, is_latest)
 
+    def _toggle_maximize(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # Position floating "↓ Câu mới" pill near bottom center of left panel
+        if hasattr(self, "new_items_btn") and self.new_items_btn:
+            x = (self.scroll_area.width() - self.new_items_btn.width()) // 2
+            y = self.scroll_area.height() - self.new_items_btn.height() - 14
+            self.new_items_btn.move(max(10, x), max(10, y))
+
+    def _on_scroll_changed(self, value: int) -> None:
+        vbar = self.scroll_area.verticalScrollBar()
+        at_bottom = (vbar.maximum() - value) <= 45
+        if at_bottom:
+            self._user_scrolled_up = False
+            self._unread_count = 0
+            self.new_items_btn.hide()
+        else:
+            self._user_scrolled_up = True
+
+    def _on_click_new_items(self) -> None:
+        self._user_scrolled_up = False
+        self._unread_count = 0
+        self.new_items_btn.hide()
+        self._smooth_scroll_to_bottom()
+
+    def _smooth_scroll_to_bottom(self) -> None:
+        QApplication.processEvents()
+        vbar = self.scroll_area.verticalScrollBar()
+        self._scroll_anim.stop()
+        self._scroll_anim.setStartValue(vbar.value())
+        self._scroll_anim.setEndValue(vbar.maximum())
+        self._scroll_anim.start()
+
     def on_entry_added(self, entry: TranscriptEntry):
         # Unmark previous latest
         if self.entry_widgets:
             prev = self.entry_widgets[-1]
             prev.is_latest = False
-            prev.setup_ui() # re-run to update styles
+            prev.setup_ui()
             prev.update()
             
         self.add_entry_widget(entry, True)
         self.update_meta()
         
-        # Auto-scroll to bottom
-        vbar = self.scroll_area.verticalScrollBar()
-        vbar.setValue(vbar.maximum())
+        if self._user_scrolled_up:
+            self._unread_count += 1
+            self.new_items_btn.setText(f"↓ {self._unread_count} câu mới")
+            self.new_items_btn.show()
+            self.new_items_btn.raise_()
+        else:
+            self._smooth_scroll_to_bottom()
 
     def add_entry_widget(self, entry: TranscriptEntry, is_latest: bool):
         w = TranscriptEntryWidget(entry, self.theme, is_latest)
