@@ -336,7 +336,8 @@ class _DualSubtitleWidget(QWidget):
         outline_color: QColor,
         get_x_fn,
     ) -> None:
-        metrics = painter.fontMetrics()
+        painter.setFont(font)
+        metrics = QFontMetrics(font)
         line_h = int(metrics.height() * 1.35)
 
         cur_y = start_y
