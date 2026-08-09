@@ -89,6 +89,43 @@ class TopTabButton(QPushButton):
             """)
 
 
+class HeaderBar(QFrame):
+    """Top titlebar area that triggers window move when clicked or dragged."""
+
+    def __init__(self, main_win: QWidget, parent=None):
+        super().__init__(parent)
+        self.main_win = main_win
+        self.drag_pos: Optional[QPoint] = None
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.LeftButton:
+            child = self.childAt(event.pos())
+            if isinstance(child, (QPushButton, TopTabButton)):
+                super().mousePressEvent(event)
+                return
+
+            if self.main_win.windowHandle():
+                self.main_win.windowHandle().startSystemMove()
+                event.accept()
+                return
+
+            self.drag_pos = event.globalPosition().toPoint() - self.main_win.frameGeometry().topLeft()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if event.buttons() == Qt.LeftButton and self.drag_pos is not None:
+            self.main_win.move(event.globalPosition().toPoint() - self.drag_pos)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        self.drag_pos = None
+        super().mouseReleaseEvent(event)
+
+
 class MainWindow(QWidget):
     """Single unified control window containing HUD, Transcript, and Settings tabs."""
 
@@ -136,7 +173,7 @@ class MainWindow(QWidget):
         main_layout.addWidget(self.container)
 
         # ── 1. Top Header Bar with Navigation Tabs ──────────────────
-        self.header = QFrame(self.container)
+        self.header = HeaderBar(self, self.container)
         self.header.setFixedHeight(54)
         self.header.setStyleSheet(f"border-bottom: 1px solid {self.theme.border}; background: transparent;")
         header_layout = QHBoxLayout(self.header)
@@ -145,11 +182,13 @@ class MainWindow(QWidget):
 
         # Logo badge & status dot
         self.dot = PulsingDot(self.theme.teal)
+        self.dot.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         header_layout.addWidget(self.dot)
 
         app_title = QLabel("Real-Time Translator")
         app_title.setFont(font_ui(11, QFont.Weight.DemiBold))
         app_title.setStyleSheet(f"color: {self.theme.text}; border: none;")
+        app_title.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         header_layout.addWidget(app_title)
 
         header_layout.addStretch(1)
