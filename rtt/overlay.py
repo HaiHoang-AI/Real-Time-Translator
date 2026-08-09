@@ -7,8 +7,8 @@ Two-line cinema subtitle style with smooth 250ms OutCubic transition animation:
 
 Features:
   - Netflix/YouTube style translucent background card with rounded corners (12px)
-  - Customizable background opacity via Cài đặt -> Hiển thị -> Độ mờ nền
-  - Multi-line word wrapping (max 2-3 lines per sentence) so text never squeezes
+  - Perfect text containment inside background card (Zero alignment mismatch)
+  - Multi-line word wrapping at max ~720px line width
   - Alignment control (Căn trái / Căn giữa / Căn phải)
 """
 
@@ -51,12 +51,7 @@ class OverlayBridge(QObject):
 
 
 class _DualSubtitleWidget(QWidget):
-    """Dual-line cinema style subtitle widget with smooth OutCubic transition animation.
-
-    Top line: Previous committed sentence (75% font size, 65% opacity).
-    Bottom line: Current committed sentence (100% font size, 100% opacity).
-    Below: Partial live speech line (55% font size, dimmed).
-    """
+    """Dual-line cinema style subtitle widget with smooth OutCubic transition animation."""
 
     def __init__(
         self,
@@ -121,8 +116,7 @@ class _DualSubtitleWidget(QWidget):
     def _recalc_height(self) -> None:
         font_curr = QFont(self._font_family, self._main_pt, QFont.DemiBold)
         line_h = QFontMetrics(font_curr).height()
-        # Reserve height for max 3 lines prev, max 3 lines curr, 1 line partial
-        total_h = line_h * 7 + 44
+        total_h = line_h * 8 + 60
         self.setFixedHeight(total_h)
 
     @staticmethod
@@ -150,13 +144,11 @@ class _DualSubtitleWidget(QWidget):
         if not text or text == self._curr_text:
             return
 
-        # If this is an in-progress update to the CURRENT sentence:
         if self._curr_text and self._is_continuation(self._curr_text, text):
             self._curr_text = text
             self.update()
             return
 
-        # Otherwise, this is a BRAND NEW DISTINCT SENTENCE:
         self._old_prev_text = self._prev_text
         self._prev_text = self._curr_text
         self._curr_text = text
@@ -192,146 +184,158 @@ class _DualSubtitleWidget(QWidget):
 
         m_prev = QFontMetrics(font_prev)
         m_curr = QFontMetrics(font_curr)
+        m_part = QFontMetrics(font_part)
+
+        # Force line wrapping when text exceeds ~680px so long sentences wrap to 2-3 lines!
+        max_wrap_width = min(680, max(360, int(self.width() * 0.52)))
+
+        prev_lines = self._wrap(m_prev, self._prev_text, max_wrap_width)[:3] if self._prev_text else []
+        curr_lines = self._wrap(m_curr, self._curr_text, max_wrap_width)[:3] if self._curr_text else []
+        part_lines = self._wrap(m_part, self._partial_text, max_wrap_width)[:1] if (self._show_original and self._partial_text) else []
 
         h_prev = m_prev.height()
         h_curr = m_curr.height()
+        h_part = m_part.height()
 
-        # Target Y positions
-        y_top = 14 + m_prev.ascent()
-        y_curr = y_top + h_prev * 2 + 12
-        y_part = y_curr + h_curr * 2 + 8
+        n_prev = max(1, len(prev_lines)) if prev_lines else 0
+        n_curr = max(1, len(curr_lines)) if curr_lines else 0
 
-        # ── Step A: Paint Netflix/YouTube Style Translucent Background Pill ──
+        y_top = 16 + m_prev.ascent()
+        y_curr = y_top + (n_prev * h_prev) + 12
+        y_part = y_curr + (n_curr * h_curr) + 8
+
+        # Calculate max line width across all rendered lines
+        max_line_w = 0
+        for l in prev_lines:
+            max_line_w = max(max_line_w, m_prev.horizontalAdvance(l))
+        for l in curr_lines:
+            max_line_w = max(max_line_w, m_curr.horizontalAdvance(l))
+        for l in part_lines:
+            max_line_w = max(max_line_w, m_part.horizontalAdvance(l))
+
+        if max_line_w == 0:
+            painter.end()
+            return
+
+        pad_x = 20
+        pad_y = 12
+
+        card_w = max_line_w + (pad_x * 2)
+        total_text_h = (y_part + len(part_lines)*h_part if part_lines else y_curr + len(curr_lines)*h_curr) - (y_top - m_prev.ascent())
+        card_h = total_text_h + (pad_y * 2)
+
+        min_y = y_top - m_prev.ascent() - pad_y
+
+        if self._alignment == "left":
+            card_x = 16.0
+        elif self._alignment == "right":
+            card_x = float(self.width() - card_w - 16.0)
+        else:  # center
+            card_x = (self.width() - card_w) / 2.0
+
+        card_rect = QRectF(card_x, min_y, card_w, card_h)
+
+        # ── Step 1: Draw Background Card ──
         if self._bg_opacity > 0.01:
             bg_alpha = int(255 * self._bg_opacity)
-            # Collect bounding box of active texts
-            max_line_w = 0
-            min_y = y_top - m_prev.ascent() - 6
-            max_y = y_curr + h_curr
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(0, 0, 0, bg_alpha))
+            painter.drawRoundedRect(card_rect, 14, 14)
 
-            if self._prev_text:
-                lines = self._wrap(m_prev, self._prev_text, self.width() - 40)[:3]
-                for l in lines:
-                    max_line_w = max(max_line_w, m_prev.horizontalAdvance(l))
-            if self._curr_text:
-                lines = self._wrap(m_curr, self._curr_text, self.width() - 40)[:3]
-                for l in lines:
-                    max_line_w = max(max_line_w, m_curr.horizontalAdvance(l))
-                max_y = y_curr + (len(lines) * h_curr)
-            if self._show_original and self._partial_text:
-                m_part = QFontMetrics(font_part)
-                lines = self._wrap(m_part, self._partial_text, self.width() - 40)[:1]
-                for l in lines:
-                    max_line_w = max(max_line_w, m_part.horizontalAdvance(l))
-                max_y = y_part + m_part.height()
+        # Line alignment helper inside card_rect
+        def get_x(line_w: float) -> float:
+            if self._alignment == "left":
+                return card_x + pad_x
+            elif self._alignment == "right":
+                return card_x + card_w - pad_x - line_w
+            else:  # center
+                return card_x + (card_w - line_w) / 2.0
 
-            if max_line_w > 0:
-                card_w = min(self.width() - 16, max_line_w + 36)
-                card_h = max(30, max_y - min_y + 12)
-
-                if self._alignment == "left":
-                    card_x = 10
-                elif self._alignment == "right":
-                    card_x = self.width() - card_w - 10
-                else:  # center
-                    card_x = (self.width() - card_w) / 2
-
-                card_rect = QRectF(card_x, min_y, card_w, card_h)
-                painter.setPen(Qt.NoPen)
-                painter.setBrush(QColor(0, 0, 0, bg_alpha))
-                painter.drawRoundedRect(card_rect, 12, 12)
-
-        # ── Step B: Paint Subtitle Lines with Alignment ──
-
-        # 1. Paint Old Previous Line (fading out)
+        # ── Step 2: Draw Old Previous Line (fading out) ──
         if self._old_prev_text and p < 1.0:
             alpha_old = int(255 * 0.65 * (1.0 - p))
             if alpha_old > 0:
                 y_old = y_top - int(12 * p)
-                self._draw_outlined_text(
-                    painter, font_prev, self._old_prev_text, y_old,
+                self._draw_lines(
+                    painter, font_prev, prev_lines, y_old,
                     QColor(255, 255, 255, alpha_old),
                     QColor(0, 0, 0, int(220 * (1.0 - p))),
-                    max_lines=3,
+                    get_x,
                 )
 
-        # 2. Paint Previous Line (gliding & shrinking from current pos to top pos)
-        if self._prev_text:
+        # ── Step 3: Draw Previous Line (gliding & shrinking) ──
+        if prev_lines:
             if p < 1.0:
                 size_interp = int(curr_pt - (curr_pt - prev_pt) * p)
                 font_interp = QFont(self._font_family, size_interp, QFont.DemiBold)
+                m_interp = QFontMetrics(font_interp)
+                interp_lines = self._wrap(m_interp, self._prev_text, max_wrap_width)[:3]
                 y_interp = int(y_curr - (y_curr - y_top) * p)
                 alpha_interp = int(255 * (1.0 - 0.35 * p))
                 outline_alpha = int(220 * (1.0 - 0.2 * p))
 
-                self._draw_outlined_text(
-                    painter, font_interp, self._prev_text, y_interp,
+                self._draw_lines(
+                    painter, font_interp, interp_lines, y_interp,
                     QColor(255, 255, 255, alpha_interp),
                     QColor(0, 0, 0, outline_alpha),
-                    max_lines=3,
+                    get_x,
                 )
             else:
-                self._draw_outlined_text(
-                    painter, font_prev, self._prev_text, y_top,
+                self._draw_lines(
+                    painter, font_prev, prev_lines, y_top,
                     QColor(255, 255, 255, 165),  # 65% opacity
                     QColor(0, 0, 0, 180),
-                    max_lines=3,
+                    get_x,
                 )
 
-        # 3. Paint Current Line (gliding & fading in at bottom)
-        if self._curr_text:
+        # ── Step 4: Draw Current Line (gliding & fading in) ──
+        if curr_lines:
             if p < 1.0:
                 y_curr_interp = int(y_curr + 14 * (1.0 - p))
                 alpha_curr = int(255 * p)
                 outline_curr = int(220 * p)
-                self._draw_outlined_text(
-                    painter, font_curr, self._curr_text, y_curr_interp,
+                self._draw_lines(
+                    painter, font_curr, curr_lines, y_curr_interp,
                     QColor(255, 255, 255, alpha_curr),
                     QColor(0, 0, 0, outline_curr),
-                    max_lines=3,
+                    get_x,
                 )
             else:
-                self._draw_outlined_text(
-                    painter, font_curr, self._curr_text, y_curr,
+                self._draw_lines(
+                    painter, font_curr, curr_lines, y_curr,
                     QColor(255, 255, 255, 255),  # 100% opacity
                     QColor(0, 0, 0, 230),
-                    max_lines=3,
+                    get_x,
                 )
 
-        # 4. Paint Partial Live Speech Line
-        if self._show_original and self._partial_text:
-            self._draw_outlined_text(
-                painter, font_part, self._partial_text, y_part,
+        # ── Step 5: Draw Partial Live Speech Line ──
+        if part_lines:
+            self._draw_lines(
+                painter, font_part, part_lines, y_part,
                 QColor(208, 208, 208, 190),
                 QColor(0, 0, 0, 160),
-                max_lines=1,
+                get_x,
             )
 
         painter.end()
 
-    def _draw_outlined_text(
+    def _draw_lines(
         self,
         painter: QPainter,
         font: QFont,
-        text: str,
-        y: int,
+        lines: list[str],
+        start_y: int,
         color: QColor,
         outline_color: QColor,
-        max_lines: int = 3,
+        get_x_fn,
     ) -> None:
         metrics = painter.fontMetrics()
-        lines = self._wrap(metrics, text, self.width() - 44)[:max_lines]
         line_h = metrics.height()
 
-        cur_y = y
+        cur_y = start_y
         for line in lines:
             line_w = metrics.horizontalAdvance(line)
-            if self._alignment == "left":
-                x = 24.0
-            elif self._alignment == "right":
-                x = float(self.width() - 24.0 - line_w)
-            else:  # center
-                x = (self.width() - line_w) / 2.0
+            x = get_x_fn(line_w)
 
             path = QPainterPath()
             path.addText(x, cur_y, font, line)
