@@ -314,15 +314,26 @@ class DisplayTab(QWidget):
         layout.addWidget(self.preview_box)
         
         # Sliders
+        # Sliders
         self.font_slider = SliderWidget("Cỡ chữ bản dịch", 12, 40, theme, unit="px")
         self.font_slider.valueChanged.connect(self._on_font_size)
         layout.addWidget(self.font_slider)
         
         self.opacity_slider = SliderWidget("Độ mờ nền", 0, 100, theme, unit="%")
-        self.opacity_slider.valueChanged.connect(lambda v: self.settings.update(display={'bg_opacity': v/100.0}))
+        self.opacity_slider.valueChanged.connect(self._on_opacity_change)
         layout.addWidget(self.opacity_slider)
         
         # Segments
+        align_layout = QHBoxLayout()
+        align_lbl = QLabel("Căn lề phụ đề")
+        align_lbl.setStyleSheet(f"color: {theme.dim}; font-size: 12.5px;")
+        self.align_seg = SegmentControl(["Căn trái", "Căn giữa", "Căn phải"], theme)
+        self.align_seg.valueChanged.connect(self._on_align_change)
+        align_layout.addWidget(align_lbl)
+        align_layout.addStretch()
+        align_layout.addWidget(self.align_seg)
+        layout.addLayout(align_layout)
+
         pos_layout = QHBoxLayout()
         pos_lbl = QLabel("Vị trí")
         pos_lbl.setStyleSheet(f"color: {theme.dim}; font-size: 12.5px;")
@@ -371,11 +382,26 @@ class DisplayTab(QWidget):
         self.f_tgt.setPixelSize(v)
         self.tgt_lbl.setFont(self.f_tgt)
         self.settings.update(display={'font_size': v})
+
+    def _on_opacity_change(self, v):
+        alpha = int(255 * v / 100.0)
+        self.preview_card.setStyleSheet(f"background-color: rgba(0, 0, 0, {alpha/255.0:.2f}); border-radius: 8px;")
+        self.settings.update(display={'bg_opacity': v / 100.0})
+
+    def _on_align_change(self, text):
+        mapping = {"Căn trái": "left", "Căn giữa": "center", "Căn phải": "right"}
+        align = mapping.get(text, "center")
+        qt_align = Qt.AlignLeft if align == "left" else (Qt.AlignRight if align == "right" else Qt.AlignCenter)
+        self.tgt_lbl.setAlignment(qt_align)
+        self.src_lbl.setAlignment(qt_align)
+        self.settings.update(display={'alignment': align})
         
     def _load_settings(self):
         d = self.settings.data
         self.font_slider.setValue(d.display.font_size)
         self.opacity_slider.setValue(int(d.display.bg_opacity * 100))
+        align_map = {"left": "Căn trái", "center": "Căn giữa", "right": "Căn phải"}
+        self.align_seg.setValue(align_map.get(getattr(d.display, 'alignment', 'center'), "Căn giữa"))
         self.pos_seg.setValue(d.display.position)
         self.screen_seg.setValue(d.display.screen)
         self.orig_tog.setChecked(d.display.show_original)

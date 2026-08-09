@@ -5,11 +5,11 @@ Two-line cinema subtitle style with smooth 250ms OutCubic transition animation:
   - Bottom line  : current committed subtitle (100% font size, 100% opacity)
   - Partial line : live in-progress speech (55% font size, dimmed)
 
-Smooth animation: when a new sentence is committed, the current sentence
-shrinks (100% -> 75%), fades (100% -> 65%), and glides up into the top line
-while the new sentence slides in below.
-
-Ctrl+Alt+S toggles "move mode" where it can be dragged.
+Features:
+  - Netflix/YouTube style translucent background card with rounded corners (12px)
+  - Customizable background opacity via Cài đặt -> Hiển thị -> Độ mờ nền
+  - Multi-line word wrapping (max 2-3 lines per sentence) so text never squeezes
+  - Alignment control (Căn trái / Căn giữa / Căn phải)
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from PySide6.QtCore import (
     QPoint,
     QPropertyAnimation,
     Property,
+    QRectF,
     Qt,
     Signal,
 )
@@ -62,12 +63,16 @@ class _DualSubtitleWidget(QWidget):
         main_pt: int = 20,
         font_family: str = "Segoe UI",
         show_original: bool = True,
+        bg_opacity: float = 0.78,
+        alignment: str = "center",
         parent=None,
     ) -> None:
         super().__init__(parent)
         self._main_pt = main_pt
         self._font_family = font_family
         self._show_original = show_original
+        self._bg_opacity = bg_opacity
+        self._alignment = alignment
 
         self._old_prev_text = ""
         self._prev_text = ""
@@ -104,10 +109,20 @@ class _DualSubtitleWidget(QWidget):
         self._recalc_height()
         self.update()
 
+    def set_bg_opacity(self, opacity: float) -> None:
+        self._bg_opacity = max(0.0, min(1.0, opacity))
+        self.update()
+
+    def set_alignment(self, align: str) -> None:
+        if align in ("left", "center", "right"):
+            self._alignment = align
+            self.update()
+
     def _recalc_height(self) -> None:
         font_curr = QFont(self._font_family, self._main_pt, QFont.DemiBold)
         line_h = QFontMetrics(font_curr).height()
-        total_h = line_h * 5 + 34
+        # Reserve height for max 3 lines prev, max 3 lines curr, 1 line partial
+        total_h = line_h * 7 + 44
         self.setFixedHeight(total_h)
 
     @staticmethod
@@ -135,9 +150,8 @@ class _DualSubtitleWidget(QWidget):
         if not text or text == self._curr_text:
             return
 
-        # If this is an in-progress update to the CURRENT sentence (not a new distinct sentence):
+        # If this is an in-progress update to the CURRENT sentence:
         if self._curr_text and self._is_continuation(self._curr_text, text):
-            # Update the current sentence in place without shifting prev_text or re-triggering slide animation!
             self._curr_text = text
             self.update()
             return
@@ -183,9 +197,51 @@ class _DualSubtitleWidget(QWidget):
         h_curr = m_curr.height()
 
         # Target Y positions
-        y_top = 10 + m_prev.ascent()
-        y_curr = y_top + h_prev * 2 + 10
-        y_part = y_curr + h_curr * 2 + 6
+        y_top = 14 + m_prev.ascent()
+        y_curr = y_top + h_prev * 2 + 12
+        y_part = y_curr + h_curr * 2 + 8
+
+        # ── Step A: Paint Netflix/YouTube Style Translucent Background Pill ──
+        if self._bg_opacity > 0.01:
+            bg_alpha = int(255 * self._bg_opacity)
+            # Collect bounding box of active texts
+            max_line_w = 0
+            min_y = y_top - m_prev.ascent() - 6
+            max_y = y_curr + h_curr
+
+            if self._prev_text:
+                lines = self._wrap(m_prev, self._prev_text, self.width() - 40)[:3]
+                for l in lines:
+                    max_line_w = max(max_line_w, m_prev.horizontalAdvance(l))
+            if self._curr_text:
+                lines = self._wrap(m_curr, self._curr_text, self.width() - 40)[:3]
+                for l in lines:
+                    max_line_w = max(max_line_w, m_curr.horizontalAdvance(l))
+                max_y = y_curr + (len(lines) * h_curr)
+            if self._show_original and self._partial_text:
+                m_part = QFontMetrics(font_part)
+                lines = self._wrap(m_part, self._partial_text, self.width() - 40)[:1]
+                for l in lines:
+                    max_line_w = max(max_line_w, m_part.horizontalAdvance(l))
+                max_y = y_part + m_part.height()
+
+            if max_line_w > 0:
+                card_w = min(self.width() - 16, max_line_w + 36)
+                card_h = max(30, max_y - min_y + 12)
+
+                if self._alignment == "left":
+                    card_x = 10
+                elif self._alignment == "right":
+                    card_x = self.width() - card_w - 10
+                else:  # center
+                    card_x = (self.width() - card_w) / 2
+
+                card_rect = QRectF(card_x, min_y, card_w, card_h)
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QColor(0, 0, 0, bg_alpha))
+                painter.drawRoundedRect(card_rect, 12, 12)
+
+        # ── Step B: Paint Subtitle Lines with Alignment ──
 
         # 1. Paint Old Previous Line (fading out)
         if self._old_prev_text and p < 1.0:
@@ -196,18 +252,15 @@ class _DualSubtitleWidget(QWidget):
                     painter, font_prev, self._old_prev_text, y_old,
                     QColor(255, 255, 255, alpha_old),
                     QColor(0, 0, 0, int(220 * (1.0 - p))),
-                    max_lines=2,
+                    max_lines=3,
                 )
 
         # 2. Paint Previous Line (gliding & shrinking from current pos to top pos)
         if self._prev_text:
             if p < 1.0:
-                # Interpolate size: 100% -> 75%
                 size_interp = int(curr_pt - (curr_pt - prev_pt) * p)
                 font_interp = QFont(self._font_family, size_interp, QFont.DemiBold)
-                # Interpolate Y: y_curr -> y_top
                 y_interp = int(y_curr - (y_curr - y_top) * p)
-                # Interpolate opacity: 1.0 -> 0.65
                 alpha_interp = int(255 * (1.0 - 0.35 * p))
                 outline_alpha = int(220 * (1.0 - 0.2 * p))
 
@@ -215,14 +268,14 @@ class _DualSubtitleWidget(QWidget):
                     painter, font_interp, self._prev_text, y_interp,
                     QColor(255, 255, 255, alpha_interp),
                     QColor(0, 0, 0, outline_alpha),
-                    max_lines=2,
+                    max_lines=3,
                 )
             else:
                 self._draw_outlined_text(
                     painter, font_prev, self._prev_text, y_top,
                     QColor(255, 255, 255, 165),  # 65% opacity
                     QColor(0, 0, 0, 180),
-                    max_lines=2,
+                    max_lines=3,
                 )
 
         # 3. Paint Current Line (gliding & fading in at bottom)
@@ -235,14 +288,14 @@ class _DualSubtitleWidget(QWidget):
                     painter, font_curr, self._curr_text, y_curr_interp,
                     QColor(255, 255, 255, alpha_curr),
                     QColor(0, 0, 0, outline_curr),
-                    max_lines=2,
+                    max_lines=3,
                 )
             else:
                 self._draw_outlined_text(
                     painter, font_curr, self._curr_text, y_curr,
                     QColor(255, 255, 255, 255),  # 100% opacity
                     QColor(0, 0, 0, 230),
-                    max_lines=2,
+                    max_lines=3,
                 )
 
         # 4. Paint Partial Live Speech Line
@@ -264,15 +317,22 @@ class _DualSubtitleWidget(QWidget):
         y: int,
         color: QColor,
         outline_color: QColor,
-        max_lines: int = 2,
+        max_lines: int = 3,
     ) -> None:
         metrics = painter.fontMetrics()
-        lines = self._wrap(metrics, text, self.width() - 32)[-max_lines:]
+        lines = self._wrap(metrics, text, self.width() - 44)[:max_lines]
         line_h = metrics.height()
 
         cur_y = y
         for line in lines:
-            x = (self.width() - metrics.horizontalAdvance(line)) / 2
+            line_w = metrics.horizontalAdvance(line)
+            if self._alignment == "left":
+                x = 24.0
+            elif self._alignment == "right":
+                x = float(self.width() - 24.0 - line_w)
+            else:  # center
+                x = (self.width() - line_w) / 2.0
+
             path = QPainterPath()
             path.addText(x, cur_y, font, line)
             painter.setPen(QPen(outline_color, 4))
@@ -308,7 +368,6 @@ class SubtitleOverlay(QWidget):
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self._click_through(True)
 
-        # Resolve initial font family from settings.
         use_custom = settings.data.ui.use_custom_fonts if settings else False
         try:
             from rtt.theme import font_ui
@@ -318,11 +377,15 @@ class SubtitleOverlay(QWidget):
 
         main_pt = settings.data.display.font_size if settings else 20
         show_orig = settings.data.display.show_original if settings else True
+        bg_opac = settings.data.display.bg_opacity if settings else 0.78
+        align = getattr(settings.data.display, 'alignment', 'center') if settings else 'center'
 
         self.subtitle_widget = _DualSubtitleWidget(
             main_pt=main_pt,
             font_family=ui_font,
             show_original=show_orig,
+            bg_opacity=bg_opac,
+            alignment=align,
             parent=self,
         )
 
@@ -372,6 +435,8 @@ class SubtitleOverlay(QWidget):
         main_pt = s.data.display.font_size
         self.subtitle_widget.set_font(ui_font, main_pt)
         self.subtitle_widget.set_show_original(s.data.display.show_original)
+        self.subtitle_widget.set_bg_opacity(s.data.display.bg_opacity)
+        self.subtitle_widget.set_alignment(getattr(s.data.display, 'alignment', 'center'))
         self._apply_position(s)
 
     def _click_through(self, enabled: bool) -> None:

@@ -42,6 +42,7 @@ class DisplaySettings:
     position: str = "bottom"        # bottom | center | top
     screen: str = "primary"         # primary | 1 | 2 | follow_mouse
     show_original: bool = True      # show source text above translation
+    alignment: str = "center"       # left | center | right
 
 
 @dataclass
