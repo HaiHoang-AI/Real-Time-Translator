@@ -275,60 +275,39 @@ class MainWindow(QWidget):
             self.theme = get_theme(self.settings.data.ui.theme)
             apply_theme(self, self.theme)
 
+    def _get_edge_enum(self, edge_str: str) -> Qt.Edge:
+        edges = Qt.Edges()
+        if "left" in edge_str: edges |= Qt.LeftEdge
+        if "right" in edge_str: edges |= Qt.RightEdge
+        if "top" in edge_str: edges |= Qt.TopEdge
+        if "bottom" in edge_str: edges |= Qt.BottomEdge
+        return edges
+
     def eventFilter(self, watched, event) -> bool:
         if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
             global_pos = event.globalPosition().toPoint()
             local_pos = self.mapFromGlobal(global_pos)
-            edge = self._get_edge_at(local_pos)
-            if edge != "none":
-                self._resize_edge = edge
-                self._start_mouse_pos = global_pos
-                self._start_geom = QRect(self.geometry())
-                return True
-            elif local_pos.y() <= 54:
+            edge_str = self._get_edge_at(local_pos)
+
+            if edge_str != "none":
+                qt_edge = self._get_edge_enum(edge_str)
+                if self.windowHandle():
+                    self.windowHandle().startSystemResize(qt_edge)
+                    return True
+
+            if local_pos.y() <= 54:
                 child = self.childAt(local_pos)
                 if not isinstance(child, (QPushButton, TopTabButton)):
-                    self.drag_pos = global_pos - self.frameGeometry().topLeft()
-                    return True
+                    if self.windowHandle():
+                        self.windowHandle().startSystemMove()
+                        return True
+
         elif event.type() == QEvent.MouseMove:
-            global_pos = event.globalPosition().toPoint()
-            local_pos = self.mapFromGlobal(global_pos)
-
             if not event.buttons():
-                edge = self._get_edge_at(local_pos)
-                self._set_cursor_for_edge(edge)
-            elif event.buttons() == Qt.LeftButton:
-                if getattr(self, "_resize_edge", "none") != "none":
-                    dx = global_pos.x() - self._start_mouse_pos.x()
-                    dy = global_pos.y() - self._start_mouse_pos.y()
-                    g = QRect(self._start_geom)
-
-                    min_w = self.minimumWidth()
-                    min_h = self.minimumHeight()
-
-                    edge = self._resize_edge
-
-                    if "left" in edge:
-                        new_w = max(min_w, g.width() - dx)
-                        g.setLeft(g.right() - new_w)
-                    if "right" in edge:
-                        g.setWidth(max(min_w, g.width() + dx))
-                    if "top" in edge:
-                        new_h = max(min_h, g.height() - dy)
-                        g.setTop(g.bottom() - new_h)
-                    if "bottom" in edge:
-                        g.setHeight(max(min_h, g.height() + dy))
-
-                    self.setGeometry(g)
-                    return True
-
-                if self.drag_pos is not None:
-                    self.move(global_pos - self.drag_pos)
-                    return True
-        elif event.type() == QEvent.MouseButtonRelease:
-            self.drag_pos = None
-            self._resize_edge = "none"
-            self.setCursor(Qt.ArrowCursor)
+                global_pos = event.globalPosition().toPoint()
+                local_pos = self.mapFromGlobal(global_pos)
+                edge_str = self._get_edge_at(local_pos)
+                self._set_cursor_for_edge(edge_str)
 
         return super().eventFilter(watched, event)
 
