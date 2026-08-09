@@ -109,7 +109,8 @@ class MainWindow(QWidget):
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setMinimumSize(640, 480)
-        self.resize(820, 620)
+        self.setMouseTracking(True)
+        self._resize_edge = "none"
 
         self._setup_ui()
         if self.settings:
@@ -271,17 +272,64 @@ class MainWindow(QWidget):
             apply_theme(self, self.theme)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.LeftButton and event.pos().y() <= 54:
-            self.drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
+        if event.button() == Qt.LeftButton:
+            edge = self._get_edge_at(event.pos())
+            if edge != "none":
+                self._resize_edge = edge
+                self._start_mouse_pos = event.globalPosition().toPoint()
+                self._start_geom = QRect(self.geometry())
+                event.accept()
+                return
+            elif event.pos().y() <= 54:
+                self.drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                event.accept()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if event.buttons() == Qt.LeftButton and self.drag_pos is not None:
-            self.move(event.globalPosition().toPoint() - self.drag_pos)
-            event.accept()
+        pos = event.pos()
+        global_pos = event.globalPosition().toPoint()
+
+        # Update cursor when hovering over edges
+        if not event.buttons():
+            edge = self._get_edge_at(pos)
+            self._set_cursor_for_edge(edge)
+            return
+
+        if event.buttons() == Qt.LeftButton:
+            # Resizing window
+            if getattr(self, "_resize_edge", "none") != "none":
+                dx = global_pos.x() - self._start_mouse_pos.x()
+                dy = global_pos.y() - self._start_mouse_pos.y()
+                g = QRect(self._start_geom)
+
+                min_w = self.minimumWidth()
+                min_h = self.minimumHeight()
+
+                edge = self._resize_edge
+
+                if "left" in edge:
+                    new_w = max(min_w, g.width() - dx)
+                    g.setLeft(g.right() - new_w)
+                if "right" in edge:
+                    g.setWidth(max(min_w, g.width() + dx))
+                if "top" in edge:
+                    new_h = max(min_h, g.height() - dy)
+                    g.setTop(g.bottom() - new_h)
+                if "bottom" in edge:
+                    g.setHeight(max(min_h, g.height() + dy))
+
+                self.setGeometry(g)
+                event.accept()
+                return
+
+            # Header dragging
+            if self.drag_pos is not None:
+                self.move(global_pos - self.drag_pos)
+                event.accept()
 
     def mouseReleaseEvent(self, _event: QMouseEvent) -> None:
         self.drag_pos = None
+        self._resize_edge = "none"
+        self.setCursor(Qt.ArrowCursor)
 
 
 def main() -> None:

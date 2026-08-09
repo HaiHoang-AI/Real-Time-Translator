@@ -493,6 +493,15 @@ class TranscriptPanel(QWidget):
         self._scroll_anim.setEndValue(vbar.maximum())
         self._scroll_anim.start()
 
+    def _force_scroll_to_bottom(self) -> None:
+        QApplication.processEvents()
+        vbar = self.scroll_area.verticalScrollBar()
+        vbar.setValue(vbar.maximum())
+        self._scroll_anim.stop()
+        self._scroll_anim.setStartValue(vbar.value())
+        self._scroll_anim.setEndValue(vbar.maximum())
+        self._scroll_anim.start()
+
     def on_entry_added(self, entry: TranscriptEntry):
         if self.entry_widgets:
             prev = self.entry_widgets[-1]
@@ -503,13 +512,13 @@ class TranscriptPanel(QWidget):
         self.add_entry_widget(entry, True)
         self.update_meta()
 
-        if self._user_scrolled_up:
-            self._unread_count += 1
-            self.new_items_btn.setText(f"↓ {self._unread_count} câu mới")
-            self.new_items_btn.show()
-            self.new_items_btn.raise_()
-        else:
-            self._smooth_scroll_to_bottom()
+        self._user_scrolled_up = False
+        self._unread_count = 0
+        self.new_items_btn.hide()
+
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(30, self._force_scroll_to_bottom)
+        QTimer.singleShot(100, self._force_scroll_to_bottom)
 
     def add_entry_widget(self, entry: TranscriptEntry, is_latest: bool):
         w = TranscriptEntryWidget(entry, self.theme, is_latest)
