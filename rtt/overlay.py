@@ -6,9 +6,9 @@ Two-line cinema subtitle style with smooth 250ms OutCubic transition animation:
   - Partial line : live in-progress speech (55% font size, dimmed)
 
 Features:
-  - Netflix/YouTube style translucent background card with rounded corners (12px)
-  - Perfect text containment inside background card (Zero alignment mismatch)
-  - Multi-line word wrapping at max ~720px line width
+  - Netflix/YouTube style translucent background card with rounded corners (14px)
+  - Guaranteed 100% text containment inside background card (Zero alignment overflow)
+  - Strict multi-line word wrapping (max ~520px line width, max 6-8 words/line)
   - Alignment control (Căn trái / Căn giữa / Căn phải)
 """
 
@@ -186,12 +186,21 @@ class _DualSubtitleWidget(QWidget):
         m_curr = QFontMetrics(font_curr)
         m_part = QFontMetrics(font_part)
 
-        # Force line wrapping when text exceeds ~680px so long sentences wrap to 2-3 lines!
-        max_wrap_width = min(680, max(360, int(self.width() * 0.52)))
+        # Max single line width: 520px (forces sentences with >6-8 words to wrap into 2-3 lines!)
+        max_wrap_width = min(520, max(320, int(self.width() * 0.45)))
 
         prev_lines = self._wrap(m_prev, self._prev_text, max_wrap_width)[:3] if self._prev_text else []
         curr_lines = self._wrap(m_curr, self._curr_text, max_wrap_width)[:3] if self._curr_text else []
         part_lines = self._wrap(m_part, self._partial_text, max_wrap_width)[:1] if (self._show_original and self._partial_text) else []
+
+        interp_lines = []
+        font_interp = font_curr
+        m_interp = m_curr
+        if p < 1.0 and self._prev_text:
+            size_interp = int(curr_pt - (curr_pt - prev_pt) * p)
+            font_interp = QFont(self._font_family, size_interp, QFont.DemiBold)
+            m_interp = QFontMetrics(font_interp)
+            interp_lines = self._wrap(m_interp, self._prev_text, max_wrap_width)[:3]
 
         h_prev = m_prev.height()
         h_curr = m_curr.height()
@@ -204,12 +213,14 @@ class _DualSubtitleWidget(QWidget):
         y_curr = y_top + (n_prev * h_prev) + 12
         y_part = y_curr + (n_curr * h_curr) + 8
 
-        # Calculate max line width across all rendered lines
+        # Measure max width across ALL rendered lines using their EXACT font metrics
         max_line_w = 0
         for l in prev_lines:
             max_line_w = max(max_line_w, m_prev.horizontalAdvance(l))
         for l in curr_lines:
             max_line_w = max(max_line_w, m_curr.horizontalAdvance(l))
+        for l in interp_lines:
+            max_line_w = max(max_line_w, m_interp.horizontalAdvance(l))
         for l in part_lines:
             max_line_w = max(max_line_w, m_part.horizontalAdvance(l))
 
@@ -217,7 +228,7 @@ class _DualSubtitleWidget(QWidget):
             painter.end()
             return
 
-        pad_x = 20
+        pad_x = 22
         pad_y = 12
 
         card_w = max_line_w + (pad_x * 2)
@@ -227,9 +238,9 @@ class _DualSubtitleWidget(QWidget):
         min_y = y_top - m_prev.ascent() - pad_y
 
         if self._alignment == "left":
-            card_x = 16.0
+            card_x = 24.0
         elif self._alignment == "right":
-            card_x = float(self.width() - card_w - 16.0)
+            card_x = float(self.width() - card_w - 24.0)
         else:  # center
             card_x = (self.width() - card_w) / 2.0
 
@@ -242,7 +253,7 @@ class _DualSubtitleWidget(QWidget):
             painter.setBrush(QColor(0, 0, 0, bg_alpha))
             painter.drawRoundedRect(card_rect, 14, 14)
 
-        # Line alignment helper inside card_rect
+        # Precise line alignment helper inside card_rect
         def get_x(line_w: float) -> float:
             if self._alignment == "left":
                 return card_x + pad_x
@@ -264,12 +275,8 @@ class _DualSubtitleWidget(QWidget):
                 )
 
         # ── Step 3: Draw Previous Line (gliding & shrinking) ──
-        if prev_lines:
+        if self._prev_text:
             if p < 1.0:
-                size_interp = int(curr_pt - (curr_pt - prev_pt) * p)
-                font_interp = QFont(self._font_family, size_interp, QFont.DemiBold)
-                m_interp = QFontMetrics(font_interp)
-                interp_lines = self._wrap(m_interp, self._prev_text, max_wrap_width)[:3]
                 y_interp = int(y_curr - (y_curr - y_top) * p)
                 alpha_interp = int(255 * (1.0 - 0.35 * p))
                 outline_alpha = int(220 * (1.0 - 0.2 * p))
