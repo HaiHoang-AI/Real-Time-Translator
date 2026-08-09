@@ -173,27 +173,30 @@ class ThemeSwitcher(SegmentedControl):
                     }}
                 """)
 
-class HudWindow(QWidget):
-    def __init__(self, settings: AppSettings, bridge: QObject = None):
-        super().__init__()
+class HudPanel(QWidget):
+    def __init__(self, settings: AppSettings, bridge: QObject = None, parent=None):
+        super().__init__(parent)
         self.settings = settings
         self.hud_bridge = HudBridge()
         self.bridge = self.hud_bridge
         self.overlay_bridge = bridge
-        self.theme = get_theme(settings.data.ui.theme)
-        
-        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setFixedWidth(340)
+        self.theme = get_theme(settings.data.ui.theme if settings else "dark")
 
         self.drag_pos = None
 
         self._setup_ui()
         self._apply_theme(self.theme)
+        if self.settings:
+            self.settings.changed.connect(self._on_settings_changed)
+
+    def _on_settings_changed(self):
+        if self.settings:
+            self.theme = get_theme(self.settings.data.ui.theme)
+            self._apply_theme(self.theme)
 
     def _setup_ui(self):
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(10, 10, 10, 10)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
 
         self.container = QFrame()
         self.container.setObjectName("HudContainer")
@@ -383,6 +386,20 @@ class HudWindow(QWidget):
     def mouseReleaseEvent(self, event):
         self.drag_pos = None
 
+
+class HudWindow(QWidget):
+    def __init__(self, settings: AppSettings, bridge: QObject = None):
+        super().__init__()
+        self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedWidth(340)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        self.panel = HudPanel(settings, bridge, self)
+        layout.addWidget(self.panel)
+        self.hud_bridge = self.panel.hud_bridge
+        self.bridge = self.panel.bridge
 
 def main():
     app = QApplication(sys.argv)

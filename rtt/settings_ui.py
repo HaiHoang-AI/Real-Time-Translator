@@ -768,6 +768,48 @@ class Sidebar(QWidget):
         self.tabChanged.emit(self.btn_group.id(btn))
 
 
+class SettingsPanel(QWidget):
+    def __init__(self, settings: AppSettings, parent=None):
+        super().__init__(parent)
+        self.settings = settings
+        self.theme = get_theme(settings.data.ui.theme if settings else "dark")
+
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        self.sidebar = Sidebar(self.theme)
+        self.sidebar.close_btn.hide()
+        self.sidebar.tabChanged.connect(self._set_tab)
+
+        self.content_area = QWidget()
+        self.content_area.setStyleSheet(f"background-color: {self.theme.surface}; border-top-right-radius: 14px; border-bottom-right-radius: 14px;")
+        content_layout = QVBoxLayout(self.content_area)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.stack = QStackedWidget()
+        self.stack.addWidget(DisplayTab(self.theme, self.settings))
+        self.stack.addWidget(ModelTab(self.theme, self.settings))
+        self.stack.addWidget(GlossaryTab(self.theme, self.settings))
+        self.stack.addWidget(DubTab(self.theme, self.settings))
+
+        content_layout.addWidget(self.stack, 1)
+
+        main_layout.addWidget(self.sidebar)
+        main_layout.addWidget(self.content_area, 1)
+
+        if self.settings:
+            self.settings.changed.connect(self._on_settings_changed)
+
+    def _set_tab(self, idx):
+        self.stack.setCurrentIndex(idx)
+
+    def _on_settings_changed(self):
+        if self.settings:
+            self.theme = get_theme(self.settings.data.ui.theme)
+            apply_theme(self, self.theme)
+
+
 class SettingsWindow(QWidget):
     def __init__(self, settings: AppSettings):
         super().__init__()
@@ -781,16 +823,8 @@ class SettingsWindow(QWidget):
         
         main_layout = QHBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-        
-        self.sidebar = Sidebar(self.theme)
-        self.sidebar.close_btn.clicked.connect(self.close)
-        self.sidebar.tabChanged.connect(self._set_tab)
-        
-        self.content_area = QWidget()
-        self.content_area.setStyleSheet(f"background-color: {self.theme.surface}; border-top-right-radius: 14px; border-bottom-right-radius: 14px;")
-        content_layout = QVBoxLayout(self.content_area)
-        content_layout.setContentsMargins(0, 0, 0, 0)
+        self.panel = SettingsPanel(settings, self)
+        main_layout.addWidget(self.panel)
 
         # Top Header Bar with Window Control Buttons (Minimize, Maximize, Close)
         win_control_bar = QWidget()

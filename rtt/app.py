@@ -6,16 +6,15 @@ Wires the whole pipeline together:
 
 UI components:
   - SubtitleOverlay  : translucent click-through subtitle bar (rtt/overlay.py)
-  - HudWindow        : compact 340px control panel (rtt/hud.py)
-  - SettingsWindow   : 4-tab full configuration window (rtt/settings_ui.py)
-  - TranscriptWindow : 720px real-time conversation history logger & exporter (rtt/transcript_ui.py)
-  - System Tray      : tray menu adhering to design spec 4a (rtt/app.py)
+  - MainWindow       : single unified 820x620px control window with top nav tabs (rtt/main_window.py)
+                       combining HUD, Transcript History, and Settings.
+  - System Tray      : tray menu adhering to design spec (rtt/app.py)
 
 Threads:
   - capture thread : reads WASAPI loopback, feeds transcriber
   - stt thread     : VAD + whisper (owned by StreamingTranscriber)
   - mt thread      : translates committed sentences from a queue
-  - Qt main thread : overlay window + HUD + Settings + Transcript + system tray
+  - Qt main thread : overlay window + MainWindow + system tray
 
 Run:  uv run python -m rtt.app --src en --tgt vi
 """
@@ -266,7 +265,7 @@ class Pipeline:
 
 # ──────────────────────────────────── Tray Menu (Design 4a) ─────────
 
-def _make_tray(app, overlay, hud, settings_win, transcript_win, pipeline, settings: AppSettings):
+def _make_tray(app, overlay, main_win, pipeline, settings: AppSettings):
     from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
     from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
@@ -314,13 +313,12 @@ def _make_tray(app, overlay, hud, settings_win, transcript_win, pipeline, settin
 
     lang_act.triggered.connect(toggle_lang)
 
-    # Transcript action
-    transcript_act = menu.addAction("Mở Transcript (⌃⌥E)")
-    transcript_act.triggered.connect(lambda: transcript_win.hide() if transcript_win.isVisible() else transcript_win.show())
+    # Unified Main Window Actions
+    ctrl_act = menu.addAction("Cửa sổ điều khiển (⌃⌥E)")
+    ctrl_act.triggered.connect(lambda: main_win.hide() if main_win.isVisible() else main_win.show())
 
-    # Show HUD / Overlay actions
-    hud_act = menu.addAction("Hiện/Ẩn HUD")
-    hud_act.triggered.connect(lambda: hud.hide() if hud.isVisible() else hud.show())
+    history_act = menu.addAction("Xem Lịch sử (Transcript)")
+    history_act.triggered.connect(lambda: (main_win.set_tab(1), main_win.show()))
 
     move_action = menu.addAction("Di chuyển phụ đề (bật/tắt)")
     move_action.triggered.connect(overlay.toggle_move_mode)
@@ -329,7 +327,7 @@ def _make_tray(app, overlay, hud, settings_win, transcript_win, pipeline, settin
 
     # Settings action
     settings_act = menu.addAction("Cài đặt…")
-    settings_act.triggered.connect(settings_win.show)
+    settings_act.triggered.connect(lambda: (main_win.set_tab(2), main_win.show()))
 
     # Quit action
     quit_action = menu.addAction("Thoát")
@@ -467,10 +465,8 @@ def main() -> None:
     from PySide6.QtGui import QKeySequence, QShortcut
     from PySide6.QtWidgets import QApplication
 
-    from rtt.hud import HudWindow
+    from rtt.main_window import MainWindow
     from rtt.overlay import OverlayBridge, SubtitleOverlay
-    from rtt.settings_ui import SettingsWindow
-    from rtt.transcript_ui import TranscriptWindow
 
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
@@ -483,27 +479,20 @@ def main() -> None:
     overlay = SubtitleOverlay(bridge, settings=settings)
     overlay.show()
 
-    # Create HUD, Settings, and Transcript windows
-    hud = HudWindow(settings=settings, bridge=bridge)
-    hud.show()
+    # Create single unified MainWindow containing HUD, Transcript, and Settings tabs
+    main_window = MainWindow(settings=settings, session=session, bridge=bridge)
+    main_window.show()
 
-    settings_window = SettingsWindow(settings=settings)
-    transcript_window = TranscriptWindow(session=session, settings=settings)
-
-    # Wire HUD signals
-    hud.hud_bridge.open_settings.connect(settings_window.show)
-    hud.hud_bridge.open_transcript.connect(lambda: transcript_window.hide() if transcript_window.isVisible() else transcript_window.show())
-
-    # Keyboard shortcut Ctrl+Alt+E to toggle Transcript window
-    shortcut_transcript = QShortcut(QKeySequence("Ctrl+Alt+E"), overlay)
-    shortcut_transcript.activated.connect(lambda: transcript_window.hide() if transcript_window.isVisible() else transcript_window.show())
+    # Keyboard shortcut Ctrl+Alt+E to toggle MainWindow
+    shortcut_main = QShortcut(QKeySequence("Ctrl+Alt+E"), overlay)
+    shortcut_main.activated.connect(lambda: main_window.hide() if main_window.isVisible() else main_window.show())
 
     # Pipeline
     pipeline = Pipeline(args, bridge, settings=settings, session=session)
     bridge.status_changed.emit("Đang tải mô hình…")
     threading.Thread(target=pipeline.start, daemon=True, name="boot").start()
 
-    tray = _make_tray(app, overlay, hud, settings_window, transcript_window, pipeline, settings)  # noqa: F841
+    tray = _make_tray(app, overlay, main_window, pipeline, settings)  # noqa: F841
     sys.exit(app.exec())
 
 
