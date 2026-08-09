@@ -78,8 +78,8 @@ class _DualSubtitleWidget(QWidget):
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
 
         self._anim = QPropertyAnimation(self, b"animProgress", self)
-        self._anim.setDuration(250)
-        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._anim.setDuration(280)
+        self._anim.setEasingCurve(QEasingCurve.OutBack)
 
         self._recalc_height()
 
@@ -202,9 +202,9 @@ class _DualSubtitleWidget(QWidget):
             m_interp = QFontMetrics(font_interp)
             interp_lines = self._wrap(m_interp, self._prev_text, max_wrap_width)[:3]
 
-        h_prev = m_prev.height()
-        h_curr = m_curr.height()
-        h_part = m_part.height()
+        h_prev = int(m_prev.height() * 1.35)
+        h_curr = int(m_curr.height() * 1.35)
+        h_part = int(m_part.height() * 1.35)
 
         n_prev = max(1, len(prev_lines)) if prev_lines else 0
         n_curr = max(1, len(curr_lines)) if curr_lines else 0
@@ -337,7 +337,7 @@ class _DualSubtitleWidget(QWidget):
         get_x_fn,
     ) -> None:
         metrics = painter.fontMetrics()
-        line_h = metrics.height()
+        line_h = int(metrics.height() * 1.35)
 
         cur_y = start_y
         for line in lines:

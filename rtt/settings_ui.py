@@ -99,8 +99,8 @@ class ToggleSwitch(QCheckBox):
         self._thumb_pos = 1.0 if self.isChecked() else 0.0
 
         self._anim = QPropertyAnimation(self, b"thumbPos", self)
-        self._anim.setDuration(180)
-        self._anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._anim.setDuration(220)
+        self._anim.setEasingCurve(QEasingCurve.OutBack)
         self.toggled.connect(self._start_anim)
 
     def _get_thumb_pos(self) -> float:
