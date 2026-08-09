@@ -196,9 +196,11 @@ class HudPanel(QWidget):
 
     def _setup_ui(self):
         self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setContentsMargins(20, 20, 20, 20)
+        self.main_layout.setAlignment(Qt.AlignCenter)
 
         self.container = QFrame()
+        self.container.setFixedWidth(360)
         self.container.setObjectName("HudContainer")
         self.container_layout = QVBoxLayout(self.container)
         self.container_layout.setContentsMargins(0, 0, 0, 0)
@@ -372,19 +374,7 @@ class HudPanel(QWidget):
         self.mode_toggle.update_theme(theme)
         self.theme_switcher.update_theme(theme)
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            if self.header.geometry().contains(event.pos()):
-                self.drag_pos = event.globalPosition().toPoint()
-
-    def mouseMoveEvent(self, event):
-        if self.drag_pos is not None:
-            delta = event.globalPosition().toPoint() - self.drag_pos
-            self.move(self.pos() + delta)
-            self.drag_pos = event.globalPosition().toPoint()
-
-    def mouseReleaseEvent(self, event):
-        self.drag_pos = None
+        pass
 
 
 class HudWindow(QWidget):
