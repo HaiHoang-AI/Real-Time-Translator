@@ -210,9 +210,8 @@ class MainWindow(QWidget):
         self.tab_group.setExclusive(True)
 
         tabs_info = [
-            ("🎛️ Bảng điều khiển", 0),
-            ("📜 Lịch sử hội thoại", 1),
-            ("⚙️ Cài đặt", 2),
+            ("📜 Lịch sử hội thoại", 0),
+            ("⚙️ Cài đặt", 1),
         ]
 
         self.tab_buttons = []
@@ -263,18 +262,14 @@ class MainWindow(QWidget):
 
         container_layout.addWidget(self.header)
 
-        # ── 2. Content Stack (3 Pages) ──────────────────────────────
+        # ── 2. Content Stack (2 Pages) ──────────────────────────────
         self.stack = QStackedWidget(self.container)
 
-        # Page 0: HUD Panel
-        self.hud_panel = HudPanel(self.settings, self.overlay_bridge, self.stack)
-        self.stack.addWidget(self.hud_panel)
-
-        # Page 1: Transcript Panel
+        # Page 0: Transcript Panel
         self.transcript_panel = TranscriptPanel(self.session, self.settings, self.stack)
         self.stack.addWidget(self.transcript_panel)
 
-        # Page 2: Settings Panel
+        # Page 1: Settings Panel
         self.settings_panel = SettingsPanel(self.settings, self.stack)
         self.stack.addWidget(self.settings_panel)
 

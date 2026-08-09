@@ -85,6 +85,37 @@ class Pipeline:
             on_commit=self._on_commit,
         )
 
+        if settings is not None:
+            settings.changed.connect(self._sync_dub_settings)
+
+    def _sync_dub_settings(self) -> None:
+        if not self.settings:
+            return
+
+        dub_cfg = self.settings.data.dub
+        is_enabled = dub_cfg.enabled or self.args.dub
+
+        if is_enabled:
+            if self.dub is None:
+                try:
+                    from rtt.dub import DubPlayer
+                    print("[app] Starting DUB interpreter engine live...")
+                    self.dub = DubPlayer(
+                        duck_level=dub_cfg.ducking,
+                        max_speed=dub_cfg.max_speed,
+                    )
+                    self.dub.start()
+                except Exception as exc:
+                    print(f"[app] DUB initialization note: {exc}")
+            else:
+                self.dub.enabled = True
+                self.dub.ducker.duck_level = dub_cfg.ducking
+                self.dub.max_speed = dub_cfg.max_speed
+        else:
+            if self.dub is not None:
+                self.dub.enabled = False
+                self.dub.ducker.restore()
+
     def _src_lang(self) -> str:
         """Effective source language (Whisper's detection in auto mode)."""
         src = self.args.src

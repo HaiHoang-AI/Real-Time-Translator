@@ -107,19 +107,18 @@ class DubPlayer:
         self.base_speed = base_speed
         self.max_speed = max_speed
 
+        self.enabled = True
         self.active = threading.Event()  # capture gate: set while audible
         self._queue: "queue.Queue[str]" = queue.Queue()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._stream = None
         self._pa = None
-        # stream.write() returns while the device buffer is still playing;
-        # keep the gate closed for this long after the last write.
         self._drain_s = 1.0
 
-    # ------------------------------------------------------------------ api
-
     def speak(self, text: str) -> None:
+        if not getattr(self, "enabled", True):
+            return
         text = text.strip()
         if text:
             self._queue.put(text)
