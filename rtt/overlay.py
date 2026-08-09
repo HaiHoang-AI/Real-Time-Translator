@@ -110,11 +110,39 @@ class _DualSubtitleWidget(QWidget):
         total_h = line_h * 5 + 34
         self.setFixedHeight(total_h)
 
+    @staticmethod
+    def _is_continuation(old_text: str, new_text: str) -> bool:
+        """Check if new_text is an in-progress update of old_text rather than a new distinct sentence."""
+        old_clean = old_text.strip().lower()
+        new_clean = new_text.strip().lower()
+        if not old_clean or not new_clean:
+            return False
+
+        if new_clean.startswith(old_clean[:15]) or old_clean.startswith(new_clean[:15]):
+            return True
+
+        old_words = set(old_clean.split())
+        new_words = set(new_clean.split())
+        if not old_words or not new_words:
+            return False
+
+        common = old_words.intersection(new_words)
+        overlap = len(common) / max(1, min(len(old_words), len(new_words)))
+        return overlap >= 0.55
+
     def set_committed_text(self, text: str) -> None:
         text = text.strip()
         if not text or text == self._curr_text:
             return
 
+        # If this is an in-progress update to the CURRENT sentence (not a new distinct sentence):
+        if self._curr_text and self._is_continuation(self._curr_text, text):
+            # Update the current sentence in place without shifting prev_text or re-triggering slide animation!
+            self._curr_text = text
+            self.update()
+            return
+
+        # Otherwise, this is a BRAND NEW DISTINCT SENTENCE:
         self._old_prev_text = self._prev_text
         self._prev_text = self._curr_text
         self._curr_text = text
