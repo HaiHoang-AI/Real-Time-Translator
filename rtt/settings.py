@@ -77,6 +77,8 @@ class GlossarySettings:
         {"source": "Whisper", "target": "giữ nguyên"},
     ])
     strip_fillers: bool = True      # remove "uhm", "you know" etc.
+    auto_lock_caps: bool = True     # auto-protect ALL_CAPS tokens (GPU, API…)
+    auto_lock_camel: bool = True    # auto-protect CamelCase proper nouns (OpenAI…)
 
 
 @dataclass

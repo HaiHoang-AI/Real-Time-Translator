@@ -6,6 +6,15 @@ one of NLLB's stronger pairs with English).
 
 The Translator interface is deliberately tiny so we can later drop in an
 LLM engine (Ollama) without touching callers.
+
+Smart Term Locking
+------------------
+Before each translation call, a :class:`~rtt.term_locker.TermLocker`
+protects technical terms (LLM, GPU, DNA, …) by replacing them with opaque
+placeholders (``__T0__``, ``__T1__``, …).  NLLB translates the remainder
+of the sentence, and the terms are restored verbatim (or with their correct
+Vietnamese equivalents) afterward.  This prevents the model from garbling
+specialised vocabulary.
 """
 
 from __future__ import annotations
@@ -41,9 +50,17 @@ class Translator(Protocol):
 
 
 class NllbTranslator:
-    """NLLB-200 600M, int8 on CPU (fast enough for subtitle cadence)."""
+    """NLLB-200 600M, int8 on CPU (fast enough for subtitle cadence).
 
-    def __init__(self, device: str = "auto", compute_type: str | None = None) -> None:
+    Parameters
+    ----------
+    device:
+        ``"auto"`` tries CUDA first, falls back to CPU.
+    compute_type:
+        CTranslate2 compute type override (``int8``, ``int8_float16``, …).
+    """
+
+    def __init__(self, device: str = "auto", compute_type: str | None = None) -> None:  # noqa: D107
         import ctranslate2
         from huggingface_hub import snapshot_download
         from transformers import AutoTokenizer
@@ -78,6 +95,10 @@ class NllbTranslator:
         self._model_dir = model_dir
         self._tokenizers: dict[str, object] = {}
 
+        # Smart term locker — lazy import to avoid circular deps at import time
+        from rtt.term_locker import TermLocker
+        self._locker = TermLocker()
+
     def _tokenizer(self, src_nllb: str):
         tok = self._tokenizers.get(src_nllb)
         if tok is None:
@@ -85,10 +106,55 @@ class NllbTranslator:
             self._tokenizers[src_nllb] = tok
         return tok
 
-    def translate(self, text: str, src: str, tgt: str, beam: int = 2) -> str:
+    def translate(
+        self,
+        text: str,
+        src: str,
+        tgt: str,
+        beam: int = 2,
+        glossary: list[dict] | None = None,
+        auto_lock_caps: bool = True,
+        auto_lock_camel: bool = True,
+    ) -> str:
+        """Translate *text* from *src* to *tgt* with smart term locking.
+
+        Parameters
+        ----------
+        text:
+            Raw source sentence.
+        src / tgt:
+            ISO-639-1 language codes (e.g. ``"en"``, ``"vi"``).
+        beam:
+            NLLB beam search width.  Use 1 for low-latency live preview,
+            4 for committed sentences.
+        glossary:
+            User glossary entries (list of ``{"source": str, "target": str}``
+            dicts) from ``settings.data.glossary.entries``.
+        auto_lock_caps:
+            Automatically protect ALL_CAPS tokens (GPU, API, …).
+        auto_lock_camel:
+            Automatically protect CamelCase proper nouns (OpenAI, GitHub, …).
+        """
         text = text.strip()
         if not text or src == tgt:
             return text
+
+        # ── Term Locking (pre-translation) ────────────────────────────────
+        locked, mapping = self._locker.lock(
+            text,
+            glossary_entries=glossary or [],
+            auto_caps=auto_lock_caps,
+            auto_camel=auto_lock_camel,
+        )
+
+        # ── NLLB Translation ──────────────────────────────────────────────
+        translated = self._nllb_translate(locked, src, tgt, beam)
+
+        # ── Term Restoration (post-translation) ───────────────────────────
+        return self._locker.restore(translated, mapping)
+
+    def _nllb_translate(self, text: str, src: str, tgt: str, beam: int = 2) -> str:
+        """Raw NLLB-200 translation without term locking."""
         src_nllb = LANG_TO_NLLB.get(src, src)
         tgt_nllb = LANG_TO_NLLB.get(tgt, tgt)
 

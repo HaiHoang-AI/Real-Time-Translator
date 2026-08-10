@@ -250,7 +250,24 @@ class Pipeline:
                 if live:
                     try:
                         t0 = time.perf_counter()
-                        out = self.translator.translate(live, src, tgt, beam=1)
+                        glossary = (
+                            self.settings.data.glossary.entries
+                            if self.settings else []
+                        )
+                        auto_caps = (
+                            self.settings.data.glossary.auto_lock_caps
+                            if self.settings else True
+                        )
+                        auto_camel = (
+                            self.settings.data.glossary.auto_lock_camel
+                            if self.settings else True
+                        )
+                        out = self.translator.translate(
+                            live, src, tgt, beam=1,
+                            glossary=glossary,
+                            auto_lock_caps=auto_caps,
+                            auto_lock_camel=auto_camel,
+                        )
                         if DEBUG:
                             print(f"[dbg] mt live {len(live)} chars in "
                                   f"{time.perf_counter()-t0:.2f}s", flush=True)
@@ -260,7 +277,24 @@ class Pipeline:
                 continue
             try:
                 t0 = time.perf_counter()
-                out = self.translator.translate(text, src, tgt, beam=4)
+                glossary = (
+                    self.settings.data.glossary.entries
+                    if self.settings else []
+                )
+                auto_caps = (
+                    self.settings.data.glossary.auto_lock_caps
+                    if self.settings else True
+                )
+                auto_camel = (
+                    self.settings.data.glossary.auto_lock_camel
+                    if self.settings else True
+                )
+                out = self.translator.translate(
+                    text, src, tgt, beam=4,
+                    glossary=glossary,
+                    auto_lock_caps=auto_caps,
+                    auto_lock_camel=auto_camel,
+                )
                 if DEBUG:
                     print(f"[dbg] mt commit {len(text)} chars in "
                           f"{time.perf_counter()-t0:.2f}s", flush=True)
