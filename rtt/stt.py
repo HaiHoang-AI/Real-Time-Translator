@@ -98,22 +98,33 @@ class StreamingTranscriber:
         from faster_whisper import WhisperModel
 
         cfg = self.cfg
-        attempts = []
-        if cfg.device in ("auto", "cuda"):
-            attempts.append(("cuda", "float16"))
-        if cfg.device in ("auto", "cpu"):
-            attempts.append(("cpu", "int8"))
+        raw_name = (cfg.model_name or "").strip()
+        if raw_name.startswith("faster-whisper "):
+            raw_name = raw_name[len("faster-whisper "):].strip()
+
+        candidate_names = [raw_name] if raw_name and raw_name != "auto" else []
+        for default_name in ("large-v3-turbo", "small"):
+            if default_name not in candidate_names:
+                candidate_names.append(default_name)
 
         last_err: Exception | None = None
-        for device, compute in attempts:
-            try:
-                model = WhisperModel(cfg.model_name, device=device, compute_type=compute)
-                # Force lazy CUDA init now so failures happen here, not mid-stream.
-                model.transcribe(np.zeros(RATE, dtype=np.float32), beam_size=1)
-                return model, device
-            except Exception as exc:  # noqa: BLE001 - any backend failure -> next
-                last_err = exc
-        raise RuntimeError(f"Could not load Whisper model {cfg.model_name!r}: {last_err}")
+        for name in candidate_names:
+            attempts = []
+            if cfg.device in ("auto", "cuda"):
+                attempts.append(("cuda", "float16"))
+            if cfg.device in ("auto", "cpu"):
+                attempts.append(("cpu", "int8"))
+
+            for device, compute in attempts:
+                try:
+                    model = WhisperModel(name, device=device, compute_type=compute)
+                    model.transcribe(np.zeros(RATE, dtype=np.float32), beam_size=1)
+                    return model, device
+                except Exception as exc:  # noqa: BLE001
+                    last_err = exc
+                    _dbg(f"Failed loading Whisper model {name!r} ({device}/{compute}): {exc}")
+
+        raise RuntimeError(f"Could not load any Whisper model: {last_err}")
 
     # ------------------------------------------------------------- lifecycle
 

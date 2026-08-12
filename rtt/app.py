@@ -75,7 +75,9 @@ class Pipeline:
             if tgt_lang == "vi" and settings.data.ui.tgt_lang != "vi":
                 tgt_lang = settings.data.ui.tgt_lang
 
-        if model_name == "auto":
+        if model_name.startswith("faster-whisper "):
+            model_name = model_name[len("faster-whisper "):].strip()
+        if not model_name or model_name == "auto":
             model_name = "large-v3-turbo"
 
         self.stt = StreamingTranscriber(
