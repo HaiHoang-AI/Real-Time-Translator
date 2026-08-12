@@ -236,8 +236,10 @@ class Pipeline:
             self.dub = DubPlayer(duck_level=duck_level, max_speed=max_speed)
             self.dub.start()
 
-        self.bridge.status_changed.emit("")
+        self.bridge.status_changed.emit("🟢 Mô hình đã sẵn sàng dịch!")
         self._mt_ready.set()
+        time.sleep(2.5)
+        self.bridge.status_changed.emit("")
         while not self._stop.is_set():
             src = self._src_lang()
             tgt = self._tgt_lang()
