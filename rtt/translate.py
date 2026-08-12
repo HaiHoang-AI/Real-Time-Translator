@@ -19,8 +19,11 @@ specialised vocabulary.
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Protocol
+
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 NLLB_REPO = "entai2965/nllb-200-distilled-600M-ctranslate2"
 NLLB_1B3_REPO = "OpenNMT/nllb-200-distilled-1.3B-ct2-int8"
