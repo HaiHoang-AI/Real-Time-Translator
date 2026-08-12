@@ -9,10 +9,7 @@ Pieces:
                  backlog, the faster the voice speaks (like a human
                  interpreter catching up), capped so it stays natural.
 
-Feedback-loop protection (v1): while the dub voice is audible, DubPlayer.active
-is set; the capture loop must drop those frames so we never transcribe our own
-voice. (v2 will do digital echo subtraction so original speech underneath is
-kept — see NOTES in repo.)
+Continuous capture streaming: system audio capture streams continuously without frame dropping so original speech underneath is never lost.
 """
 
 from __future__ import annotations

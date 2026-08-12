@@ -514,81 +514,144 @@ class ModelTab(QWidget):
         self.settings = settings
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
-        
-        title = QLabel("Chọn model trên máy bạn")
+        layout.setSpacing(14)
+
+        title = QLabel("Chọn mô hình AI trên máy bạn")
         title.setStyleSheet(f"color: {theme.text}; font-size: 16px; font-weight: 600;")
-        sub = QLabel("Chọn model phù hợp với cấu hình máy.")
+        sub = QLabel("Tự động sử dụng GPU CUDA để tối ưu tốc độ nhận dạng & dịch thuật.")
         sub.setStyleSheet(f"color: {theme.dim}; font-size: 12.5px;")
         layout.addWidget(title)
         layout.addWidget(sub)
-        
-        self.cards = []
-        models_data = [
-            ("faster-whisper large-v3", "4.8 GB", "4.1%", "1.24", 62, "ĐỀ XUẤT"),
-            ("faster-whisper small", "1.1 GB", "9.8%", "0.58", 29, "máy yếu"),
-            ("faster-whisper medium", "2.8 GB", "6.2%", "0.85", 45, "")
+
+        # STT Cards Section
+        stt_hdr = QLabel("KHÂU NHẬN DẠNG GIỌNG NÓI (STT)")
+        stt_hdr.setFont(font_mono(600))
+        stt_hdr.setStyleSheet(f"color: {theme.dim}; font-size: 9.5px;")
+        layout.addWidget(stt_hdr)
+
+        self.stt_cards = {}
+        stt_models_data = [
+            ("large-v3-turbo", "faster-whisper large-v3-turbo", "1.5 GB", "4.0%", "0.40", 75, "ĐỀ XUẤT"),
+            ("small", "faster-whisper small", "0.5 GB", "9.8%", "0.20", 30, "máy yếu"),
+            ("large-v3", "faster-whisper large-v3", "3.0 GB", "3.5%", "1.20", 90, "chính xác nhất"),
         ]
-        
-        for name, vram, wer, lat, prog, rec in models_data:
-            c = ModelCard(name, vram, wer, lat, prog, rec, theme)
-            c.clicked.connect(self._on_model_select)
+
+        for key, title_str, vram, wer, lat, prog, rec in stt_models_data:
+            c = ModelCard(title_str, vram, wer, lat, prog, rec, theme)
+            c.clicked.connect(lambda _, k=key: self._on_stt_select(k))
             layout.addWidget(c)
-            self.cards.append(c)
-            
+            self.stt_cards[key] = c
+
         sep = QFrame()
         sep.setFixedHeight(1)
         sep.setStyleSheet(f"background-color: {theme.border};")
         layout.addWidget(sep)
-        
-        mt_lbl = QLabel("KHÂU DỊCH")
+
+        # MT Cards Section
+        mt_lbl = QLabel("KHÂU DỊCH THUẬT (MT)")
         mt_lbl.setFont(font_mono(600))
         mt_lbl.setStyleSheet(f"color: {theme.dim}; font-size: 9.5px;")
         layout.addWidget(mt_lbl)
-        
-        # MT Cards
+
         mt_layout = QHBoxLayout()
-        c1 = QFrame()
-        c1.setStyleSheet(f"background-color: {theme.raised}; border-radius: 10px; border: 2px solid {theme.teal};")
-        c1_l = QVBoxLayout(c1)
-        c1_title = QLabel("NLLB-200")
-        c1_title.setStyleSheet(f"color: {theme.text}; font-size: 13px; font-weight: 500;")
-        c1_sub = QLabel("+0.32s")
-        c1_sub.setFont(font_mono())
-        c1_sub.setStyleSheet(f"color: {theme.teal}; font-size: 11px;")
-        c1_l.addWidget(c1_title)
-        c1_l.addWidget(c1_sub)
-        
-        c2 = QFrame()
-        c2.setStyleSheet(f"background-color: {theme.raised}; border-radius: 10px;")
-        c2_l = QVBoxLayout(c2)
-        c2_title = QLabel("LLM (sắp có)")
-        c2_title.setStyleSheet(f"color: {theme.dim}; font-size: 13px; font-weight: 500;")
-        c2_sub = QLabel("chưa hỗ trợ")
-        c2_sub.setFont(font_mono())
-        c2_sub.setStyleSheet(f"color: {theme.dim}; font-size: 11px;")
-        c2_l.addWidget(c2_title)
-        c2_l.addWidget(c2_sub)
-        
-        mt_layout.addWidget(c1)
-        mt_layout.addWidget(c2)
+        mt_layout.setSpacing(10)
+
+        self.mt_frames = {}
+
+        mt_options = [
+            ("nllb-1.3b", "NLLB-200 1.3B", "ĐỀ XUẤT (+1.5s)", "Chất lượng cao, từ chuyên ngành tốt"),
+            ("nllb", "NLLB-200 600M", "Nhanh (+0.8s)", "Nhẹ, tiết kiệm VRAM"),
+            ("llm-hybrid", "LLM Hybrid", "Ollama (+3.5s)", "Qwen2.5 / Gemma (Phase 2)"),
+        ]
+
+        for key, name, sub_text, desc in mt_options:
+            frame = QFrame()
+            frame.setCursor(Qt.PointingHandCursor)
+            frame_layout = QVBoxLayout(frame)
+            frame_layout.setContentsMargins(12, 10, 12, 10)
+
+            t_lbl = QLabel(name)
+            t_lbl.setStyleSheet(f"color: {theme.text}; font-size: 12.5px; font-weight: 600;")
+
+            s_lbl = QLabel(sub_text)
+            s_lbl.setFont(font_mono())
+            s_lbl.setStyleSheet(f"color: {theme.teal if 'ĐỀ XUẤT' in sub_text else theme.dim}; font-size: 10.5px;")
+
+            d_lbl = QLabel(desc)
+            d_lbl.setStyleSheet(f"color: {theme.dim}; font-size: 10.5px;")
+            d_lbl.setWordWrap(True)
+
+            frame_layout.addWidget(t_lbl)
+            frame_layout.addWidget(s_lbl)
+            frame_layout.addWidget(d_lbl)
+
+            # Make frame clickable via mousePressEvent override
+            def make_click_handler(k):
+                def handler(event):
+                    if event.button() == Qt.LeftButton:
+                        self._on_mt_select(k)
+                return handler
+
+            frame.mousePressEvent = make_click_handler(key)
+            mt_layout.addWidget(frame)
+            self.mt_frames[key] = frame
+
         layout.addLayout(mt_layout)
-        
-        summary = QLabel("Tổng ước tính: 1.56s — đủ mượt cho phụ đề.")
-        summary.setStyleSheet(f"background-color: {theme.raised}; color: {theme.text}; padding: 12px; border-radius: 10px; font-size: 13px;")
-        layout.addWidget(summary)
-        
+
+        # Summary & Restart Notice
+        self.summary = QLabel("Tổng ước tính: ~1.9s — chuẩn xác & mượt mà cho phụ đề.")
+        self.summary.setStyleSheet(
+            f"background-color: {theme.raised}; color: {theme.text}; "
+            f"padding: 10px 12px; border-radius: 8px; font-size: 12.5px;"
+        )
+        layout.addWidget(self.summary)
+
+        notice = QLabel("⟳ Lưu ý: Thay đổi mô hình sẽ áp dụng hoàn toàn ở lần khởi động lại ứng dụng.")
+        notice.setStyleSheet(f"color: {theme.dim}; font-size: 11px; font-style: italic;")
+        layout.addWidget(notice)
+
         layout.addStretch()
         self._load_settings()
-        
-    def _on_model_select(self, name):
-        self.settings.update(model={'stt_model': name})
+
+    def _on_stt_select(self, key: str):
+        self.settings.update(model={'stt_model': key})
         self._load_settings()
-        
+
+    def _on_mt_select(self, key: str):
+        self.settings.update(model={'mt_engine': key})
+        self._load_settings()
+
     def _load_settings(self):
-        curr = self.settings.data.model.stt_model
-        for c in self.cards:
-            c.set_active(c.title_str == curr)
+        m_cfg = self.settings.data.model
+        curr_stt = m_cfg.stt_model
+        curr_mt = m_cfg.mt_engine
+
+        # Update STT cards UI
+        for key, card in self.stt_cards.items():
+            is_active = (key == curr_stt) or (key == "large-v3-turbo" and curr_stt == "auto")
+            card.set_active(is_active)
+
+        # Update MT frames UI
+        for key, frame in self.mt_frames.items():
+            is_active = (key == curr_mt) or (key == "nllb-1.3b" and curr_mt == "auto")
+            if is_active:
+                frame.setStyleSheet(
+                    f"background-color: {self.theme.raised}; border-radius: 10px; "
+                    f"border: 2px solid {self.theme.teal};"
+                )
+            else:
+                frame.setStyleSheet(
+                    f"background-color: {self.theme.raised}; border-radius: 10px; "
+                    f"border: 1px solid transparent;"
+                )
+
+        # Update summary text
+        stt_time = 0.40 if curr_stt in ("large-v3-turbo", "auto") else (0.20 if curr_stt == "small" else 1.20)
+        mt_time = 1.50 if curr_mt in ("nllb-1.3b", "auto") else (0.80 if curr_mt == "nllb" else 3.50)
+        tot = stt_time + mt_time
+        self.summary.setText(
+            f"Ước tính độ trễ: ~{tot:.2f}s  (STT: {stt_time:.2f}s + MT: {mt_time:.2f}s) — Đủ mượt cho phiên dịch."
+        )
 
 
 class GlossaryTab(QWidget):

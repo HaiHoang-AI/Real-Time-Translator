@@ -68,12 +68,15 @@ class Pipeline:
         device = args.device
 
         if settings is not None:
-            if model_name == "auto" and settings.data.model.stt_model != "auto":
+            if settings.data.model.stt_model:
                 model_name = settings.data.model.stt_model
             if src_lang == "en" and settings.data.ui.src_lang != "en":
                 src_lang = settings.data.ui.src_lang
             if tgt_lang == "vi" and settings.data.ui.tgt_lang != "vi":
                 tgt_lang = settings.data.ui.tgt_lang
+
+        if model_name == "auto":
+            model_name = "large-v3-turbo"
 
         self.stt = StreamingTranscriber(
             SttConfig(
@@ -188,33 +191,27 @@ class Pipeline:
                 if chunk.size == 0:
                     time.sleep(chunk_s / 2)
 
-                gated = False
-                if self.dub is not None:
-                    if self.dub.active.is_set():
-                        gate_tail_until = time.time() + 0.6
-                        gated = True
-                    elif time.time() < gate_tail_until:
-                        gated = True
-
-                if not gated and chunk.size:
+                if chunk.size:
                     self.stt.push(chunk)
                     pushed += chunk.size
 
                 expected = int((time.monotonic() - t_start) * STT_RATE)
                 deficit = expected - pushed
                 if deficit >= STT_RATE // 10:
-                    if not gated:
-                        self.stt.push(np.zeros(deficit, dtype=np.float32))
+                    self.stt.push(np.zeros(deficit, dtype=np.float32))
                     pushed += deficit
         finally:
             cap.close()
 
     def _mt_loop(self) -> None:
-        from rtt.translate import NllbTranslator
+        from rtt.translate import NLLB_1B3_REPO, NLLB_REPO, NllbTranslator
+
+        mt_engine = self.settings.data.model.mt_engine if self.settings else "nllb-1.3b"
+        repo = NLLB_REPO if mt_engine == "nllb" else NLLB_1B3_REPO
 
         self.bridge.status_changed.emit("Đang tải mô hình dịch…")
         try:
-            self.translator = NllbTranslator()
+            self.translator = NllbTranslator(model_repo=repo)
         except Exception as exc:  # noqa: BLE001
             print(f"[mt] FAILED to load translator, passing text through: {exc}")
             self.translator = None

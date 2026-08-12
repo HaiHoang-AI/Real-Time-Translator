@@ -23,6 +23,7 @@ import time
 from typing import Protocol
 
 NLLB_REPO = "entai2965/nllb-200-distilled-600M-ctranslate2"
+NLLB_1B3_REPO = "OpenNMT/nllb-200-distilled-1.3B-ct2-int8"
 
 # Friendly ISO-639-1 -> NLLB (FLORES-200) codes for the languages we surface
 # in the UI. NLLB supports 200; extend freely.
@@ -50,7 +51,7 @@ class Translator(Protocol):
 
 
 class NllbTranslator:
-    """NLLB-200 600M, int8 on CPU (fast enough for subtitle cadence).
+    """NLLB-200 (600M or 1.3B), int8 on CPU/CUDA (fast enough for subtitle cadence).
 
     Parameters
     ----------
@@ -58,9 +59,16 @@ class NllbTranslator:
         ``"auto"`` tries CUDA first, falls back to CPU.
     compute_type:
         CTranslate2 compute type override (``int8``, ``int8_float16``, …).
+    model_repo:
+        HuggingFace CTranslate2 model repository ID.
     """
 
-    def __init__(self, device: str = "auto", compute_type: str | None = None) -> None:  # noqa: D107
+    def __init__(
+        self,
+        device: str = "auto",
+        compute_type: str | None = None,
+        model_repo: str = NLLB_1B3_REPO,
+    ) -> None:  # noqa: D107
         import ctranslate2
         from huggingface_hub import snapshot_download
         from transformers import AutoTokenizer
@@ -68,7 +76,7 @@ class NllbTranslator:
         from rtt.cudalibs import setup_cuda_dll_dirs
 
         setup_cuda_dll_dirs()
-        model_dir = snapshot_download(NLLB_REPO)
+        model_dir = snapshot_download(model_repo)
 
         attempts: list[tuple[str, str]] = []
         if device in ("auto", "cuda"):

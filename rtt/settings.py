@@ -48,9 +48,9 @@ class DisplaySettings:
 @dataclass
 class ModelSettings:
     """STT + MT engine selection."""
-    stt_model: str = "auto"         # auto | small | medium | large-v3
-    mt_engine: str = "nllb"         # nllb (only option for now)
-    device: str = "auto"            # auto | cuda | cpu
+    stt_model: str = "large-v3-turbo"   # large-v3-turbo | small | large-v3 | auto
+    mt_engine: str = "nllb-1.3b"        # nllb-1.3b | nllb | llm-hybrid
+    device: str = "auto"               # auto | cuda | cpu
 
 
 @dataclass
