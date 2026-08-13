@@ -11,6 +11,17 @@ namespace RealTimeTranslator
         static void Main(string[] args)
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+
+            // If executable was copied to Desktop or elsewhere, locate original project directory
+            if (!File.Exists(Path.Combine(baseDir, "rtt", "app.py")))
+            {
+                string knownProjectDir = @"d:\Real Time Translate project Anti";
+                if (File.Exists(Path.Combine(knownProjectDir, "rtt", "app.py")))
+                {
+                    baseDir = knownProjectDir;
+                }
+            }
+
             string venvPythonW = Path.Combine(baseDir, ".venv", "Scripts", "pythonw.exe");
             string venvPython = Path.Combine(baseDir, ".venv", "Scripts", "python.exe");
 
