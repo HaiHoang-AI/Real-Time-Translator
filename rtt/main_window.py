@@ -149,6 +149,11 @@ class MainWindow(QWidget):
         self.setMouseTracking(True)
         self._resize_edge = "none"
 
+        from pathlib import Path
+        icon_path = Path(__file__).parent.parent / "rtt_icon.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
+
         self._setup_ui()
         if self.settings:
             self.settings.changed.connect(self._on_settings_changed)

@@ -534,8 +534,22 @@ def main() -> None:
     from rtt.main_window import MainWindow
     from rtt.overlay import OverlayBridge, SubtitleOverlay
 
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            app_id = "HaiHoang.RealTimeTranslator.1.0"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+        except Exception:
+            pass
+
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+
+    icon_path = Path(__file__).parent.parent / "rtt_icon.ico"
+    if icon_path.exists():
+        from PySide6.QtGui import QIcon
+        app_icon = QIcon(str(icon_path))
+        app.setWindowIcon(app_icon)
 
     # Load custom fonts after QApplication is initialized
     font_ok = load_custom_fonts()

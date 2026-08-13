@@ -180,7 +180,11 @@ class HudPanel(QWidget):
         self.hud_bridge = HudBridge()
         self.bridge = self.hud_bridge
         self.overlay_bridge = bridge
-        self.theme = get_theme(settings.data.ui.theme if settings else "dark")
+        from pathlib import Path
+        icon_path = Path(__file__).parent.parent / "rtt_icon.ico"
+        if icon_path.exists():
+            from PySide6.QtGui import QIcon
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         self.drag_pos = None
 

@@ -601,7 +601,13 @@ class TranscriptPanel(QWidget):
 
 class TranscriptWindow(QWidget):
     def __init__(self, session: Optional[TranscriptSession] = None, settings: Optional[AppSettings] = None, parent=None):
-        super().__init__(parent)
+        super().__init__()
+        from pathlib import Path
+        icon_path = Path(__file__).parent.parent / "rtt_icon.ico"
+        if icon_path.exists():
+            from PySide6.QtGui import QIcon
+            self.setWindowIcon(QIcon(str(icon_path)))
+
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setMinimumSize(560, 380)

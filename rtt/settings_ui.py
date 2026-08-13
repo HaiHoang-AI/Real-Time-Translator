@@ -902,9 +902,12 @@ class SettingsPanel(QWidget):
 class SettingsWindow(QWidget):
     def __init__(self, settings: AppSettings):
         super().__init__()
-        self.settings = settings
-        self.theme = get_theme(settings.data.ui.theme)
-        
+        from pathlib import Path
+        icon_path = Path(__file__).parent.parent / "rtt_icon.ico"
+        if icon_path.exists():
+            from PySide6.QtGui import QIcon
+            self.setWindowIcon(QIcon(str(icon_path)))
+
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setMinimumSize(560, 420)
