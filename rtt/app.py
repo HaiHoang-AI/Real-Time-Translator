@@ -546,12 +546,20 @@ def main() -> None:
     app.setQuitOnLastWindowClosed(False)
 
     from pathlib import Path
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QIcon, QImage, QPixmap
 
     icon_path = Path(__file__).parent.parent / "rtt_icon.ico"
     if icon_path.exists():
-        from PySide6.QtGui import QIcon
-        app_icon = QIcon(str(icon_path))
-        app.setWindowIcon(app_icon)
+        src_img = QImage(str(icon_path))
+        if not src_img.isNull():
+            app_icon = QIcon()
+            for s in (16, 24, 32, 48, 64, 128, 256):
+                scaled = src_img.scaled(s, s, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                app_icon.addPixmap(QPixmap.fromImage(scaled))
+            app.setWindowIcon(app_icon)
+        else:
+            app.setWindowIcon(QIcon(str(icon_path)))
 
     # Load custom fonts after QApplication is initialized
     font_ok = load_custom_fonts()

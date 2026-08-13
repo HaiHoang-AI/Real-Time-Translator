@@ -150,9 +150,18 @@ class MainWindow(QWidget):
         self._resize_edge = "none"
 
         from pathlib import Path
+        from PySide6.QtGui import QImage, QPixmap
         icon_path = Path(__file__).parent.parent / "rtt_icon.ico"
         if icon_path.exists():
-            self.setWindowIcon(QIcon(str(icon_path)))
+            src_img = QImage(str(icon_path))
+            if not src_img.isNull():
+                ico = QIcon()
+                for s in (16, 24, 32, 48, 64, 128, 256):
+                    scaled = src_img.scaled(s, s, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    ico.addPixmap(QPixmap.fromImage(scaled))
+                self.setWindowIcon(ico)
+            else:
+                self.setWindowIcon(QIcon(str(icon_path)))
 
         self._setup_ui()
         if self.settings:
