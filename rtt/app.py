@@ -545,6 +545,8 @@ def main() -> None:
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
 
+    from pathlib import Path
+
     icon_path = Path(__file__).parent.parent / "rtt_icon.ico"
     if icon_path.exists():
         from PySide6.QtGui import QIcon
