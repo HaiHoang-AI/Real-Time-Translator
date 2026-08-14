@@ -379,7 +379,8 @@ class TranscriptPanel(QWidget):
 
         # ── Right Sidebar (200px, Collapsible) ─────────────────────
         self.sidebar = QFrame()
-        self.sidebar.setFixedWidth(200)
+        self.sidebar.setMinimumWidth(0)
+        self.sidebar.setMaximumWidth(200)
         self.sidebar.setStyleSheet(f"border-left: 1px solid {self.theme.border}; background: transparent;")
         self._sidebar_expanded = True
         self._sidebar_anim = QPropertyAnimation(self.sidebar, b"maximumWidth", self)
@@ -505,13 +506,13 @@ class TranscriptPanel(QWidget):
     def _toggle_sidebar(self) -> None:
         self._sidebar_anim.stop()
         if self._sidebar_expanded:
-            self._sidebar_anim.setStartValue(self.sidebar.width())
+            self._sidebar_anim.setStartValue(self.sidebar.maximumWidth())
             self._sidebar_anim.setEndValue(0)
             self._sidebar_expanded = False
             self.sidebar_toggle_btn.setText("Sidebar ⇤")
         else:
             self.sidebar.show()
-            self._sidebar_anim.setStartValue(self.sidebar.width())
+            self._sidebar_anim.setStartValue(self.sidebar.maximumWidth())
             self._sidebar_anim.setEndValue(200)
             self._sidebar_expanded = True
             self.sidebar_toggle_btn.setText("Sidebar ⇥")
