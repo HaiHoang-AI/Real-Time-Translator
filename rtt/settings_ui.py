@@ -335,6 +335,105 @@ class DisplayTab(QWidget):
         align_layout.addWidget(self.align_seg)
         layout.addLayout(align_layout)
 
+        # ── Language Selection Controls ──────────────────────────────
+        lang_box = QFrame()
+        lang_box.setStyleSheet(f"background-color: {theme.raised}; border-radius: 10px; padding: 10px 14px;")
+        lang_layout = QVBoxLayout(lang_box)
+        lang_layout.setSpacing(10)
+
+        # Input Language (Source)
+        src_lang_layout = QHBoxLayout()
+        src_lang_lbl = QLabel("Ngôn ngữ đầu vào (Nói)")
+        src_lang_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; font-weight: 500;")
+        
+        self.src_lang_cb = QComboBox()
+        self.src_lang_cb.setFixedHeight(30)
+        self.src_lang_cb.setCursor(Qt.PointingHandCursor)
+        self.src_lang_cb.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {theme.surface};
+                color: {theme.text};
+                border: 1px solid {theme.border};
+                border-radius: 6px;
+                padding: 2px 10px;
+                font-size: 12.5px;
+                min-width: 180px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {theme.surface};
+                color: {theme.text};
+                selection-background-color: {theme.teal};
+                border: 1px solid {theme.border};
+            }}
+        """)
+        
+        self.LANGUAGES_SRC = [
+            ("Tự động (Auto detect)", "auto"),
+            ("Tiếng Việt (vi)", "vi"),
+            ("Tiếng Anh (en)", "en"),
+            ("Tiếng Nhật (ja)", "ja"),
+            ("Tiếng Trung (zh)", "zh"),
+            ("Tiếng Pháp (fr)", "fr"),
+            ("Tiếng Đức (de)", "de"),
+            ("Tiếng Hàn (ko)", "ko"),
+            ("Tiếng Tây Ban Nha (es)", "es"),
+        ]
+        for name, code in self.LANGUAGES_SRC:
+            self.src_lang_cb.addItem(name, code)
+        self.src_lang_cb.currentIndexChanged.connect(self._on_src_lang_changed)
+        
+        src_lang_layout.addWidget(src_lang_lbl)
+        src_lang_layout.addStretch()
+        src_lang_layout.addWidget(self.src_lang_cb)
+        lang_layout.addLayout(src_lang_layout)
+
+        # Output Language (Target)
+        tgt_lang_layout = QHBoxLayout()
+        tgt_lang_lbl = QLabel("Ngôn ngữ đầu ra (Dịch)")
+        tgt_lang_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; font-weight: 500;")
+        
+        self.tgt_lang_cb = QComboBox()
+        self.tgt_lang_cb.setFixedHeight(30)
+        self.tgt_lang_cb.setCursor(Qt.PointingHandCursor)
+        self.tgt_lang_cb.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {theme.surface};
+                color: {theme.text};
+                border: 1px solid {theme.border};
+                border-radius: 6px;
+                padding: 2px 10px;
+                font-size: 12.5px;
+                min-width: 180px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {theme.surface};
+                color: {theme.text};
+                selection-background-color: {theme.teal};
+                border: 1px solid {theme.border};
+            }}
+        """)
+        
+        self.LANGUAGES_TGT = [
+            ("Tiếng Việt (vi)", "vi"),
+            ("Tiếng Anh (en)", "en"),
+            ("Tiếng Nhật (ja)", "ja"),
+            ("Tiếng Trung (zh)", "zh"),
+            ("Tiếng Pháp (fr)", "fr"),
+            ("Tiếng Đức (de)", "de"),
+            ("Tiếng Hàn (ko)", "ko"),
+            ("Tiếng Tây Ban Nha (es)", "es"),
+        ]
+        for name, code in self.LANGUAGES_TGT:
+            self.tgt_lang_cb.addItem(name, code)
+        self.tgt_lang_cb.currentIndexChanged.connect(self._on_tgt_lang_changed)
+
+        tgt_lang_layout.addWidget(tgt_lang_lbl)
+        tgt_lang_layout.addStretch()
+        tgt_lang_layout.addWidget(self.tgt_lang_cb)
+        lang_layout.addLayout(tgt_lang_layout)
+
+        layout.addWidget(lang_box)
+
         # Toggles
         orig_layout = QHBoxLayout()
         orig_lbl = QLabel("Hiện bản gốc phía trên")
@@ -376,6 +475,16 @@ class DisplayTab(QWidget):
         self.tgt_lbl.setAlignment(qt_align)
         self.src_lbl.setAlignment(qt_align)
         self.settings.update(display={'alignment': align})
+
+    def _on_src_lang_changed(self, idx: int):
+        code = self.src_lang_cb.itemData(idx)
+        if code:
+            self.settings.update(ui={'src_lang': code})
+
+    def _on_tgt_lang_changed(self, idx: int):
+        code = self.tgt_lang_cb.itemData(idx)
+        if code:
+            self.settings.update(ui={'tgt_lang': code})
         
     def _load_settings(self):
         d = self.settings.data
@@ -385,6 +494,23 @@ class DisplayTab(QWidget):
         self.align_seg.setValue(align_map.get(getattr(d.display, 'alignment', 'center'), "Căn giữa"))
         self.orig_tog.setChecked(d.display.show_original)
         self.font_tog.setChecked(d.ui.use_custom_fonts)
+
+        # Set combobox current indexes
+        src_code = getattr(d.ui, 'src_lang', 'auto')
+        for i, (_, code) in enumerate(self.LANGUAGES_SRC):
+            if code == src_code:
+                self.src_lang_cb.blockSignals(True)
+                self.src_lang_cb.setCurrentIndex(i)
+                self.src_lang_cb.blockSignals(False)
+                break
+
+        tgt_code = getattr(d.ui, 'tgt_lang', 'vi')
+        for i, (_, code) in enumerate(self.LANGUAGES_TGT):
+            if code == tgt_code:
+                self.tgt_lang_cb.blockSignals(True)
+                self.tgt_lang_cb.setCurrentIndex(i)
+                self.tgt_lang_cb.blockSignals(False)
+                break
 
     def paintEvent(self, event):
         super().paintEvent(event)

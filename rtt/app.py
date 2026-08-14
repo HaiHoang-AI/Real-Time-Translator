@@ -97,6 +97,11 @@ class Pipeline:
         if not self.settings:
             return
 
+        # Live sync STT language preference
+        src = self.settings.data.ui.src_lang
+        if self.stt and hasattr(self.stt, "cfg"):
+            self.stt.cfg.language = None if src == "auto" else src
+
         dub_cfg = self.settings.data.dub
         is_enabled = dub_cfg.enabled or self.args.dub
 
