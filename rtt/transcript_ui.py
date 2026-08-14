@@ -200,11 +200,12 @@ class TranscriptPanel(QWidget):
         self._unread_count = 0
 
         self.setup_ui()
+        if self.settings:
+            self.settings.changed.connect(self.update_meta)
+            self.settings.changed.connect(self._on_settings_changed)
         if session:
             self.set_session(session)
 
-        if self.settings:
-            self.settings.changed.connect(self._on_settings_changed)
 
     def _on_settings_changed(self):
         if self.settings:
@@ -578,8 +579,11 @@ class TranscriptPanel(QWidget):
         secs = int(duration % 60)
         count = len(self.session.entries)
 
-        src = getattr(self.session, 'src_lang', 'EN').upper()
-        tgt = getattr(self.session, 'tgt_lang', 'VI').upper()
+        src_code = getattr(self.settings.data.ui, 'src_lang', 'auto') if (self.settings and hasattr(self.settings, 'data')) else getattr(self.session, 'src_lang', 'EN')
+        tgt_code = getattr(self.settings.data.ui, 'tgt_lang', 'vi') if (self.settings and hasattr(self.settings, 'data')) else getattr(self.session, 'tgt_lang', 'VI')
+
+        src = "AUTO" if src_code == "auto" else src_code.upper()
+        tgt = tgt_code.upper()
 
         self.meta_lbl.setText(f"{mins:02d}:{secs:02d} · {count} câu · {src} → {tgt}")
 

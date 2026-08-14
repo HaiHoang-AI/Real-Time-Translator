@@ -5,7 +5,8 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QStackedWidget, QSlider, QCheckBox, 
     QComboBox, QScrollArea, QLineEdit, QButtonGroup, 
-    QGraphicsDropShadowEffect, QFrame, QSizePolicy, QSizeGrip
+    QGraphicsDropShadowEffect, QFrame, QSizePolicy, QSizeGrip,
+    QStyledItemDelegate
 )
 from PySide6.QtCore import Qt, Signal, Property, QRect, QPoint, QSize, QRectF, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath, QFont, QLinearGradient
@@ -347,6 +348,7 @@ class DisplayTab(QWidget):
         src_lang_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; font-weight: 500;")
         
         self.src_lang_cb = QComboBox()
+        self.src_lang_cb.setItemDelegate(QStyledItemDelegate(self.src_lang_cb))
         self.src_lang_cb.setFixedHeight(30)
         self.src_lang_cb.setCursor(Qt.PointingHandCursor)
         self.src_lang_cb.setStyleSheet(f"""
@@ -360,10 +362,23 @@ class DisplayTab(QWidget):
                 min-width: 180px;
             }}
             QComboBox QAbstractItemView {{
-                background-color: {theme.surface};
+                background-color: {theme.raised};
                 color: {theme.text};
-                selection-background-color: {theme.teal};
-                border: 1px solid {theme.border};
+                border: 1px solid {theme.border_strong};
+                border-radius: 8px;
+                padding: 4px;
+                outline: none;
+            }}
+            QComboBox QAbstractItemView::item {{
+                min-height: 28px;
+                padding: 4px 10px;
+                border-radius: 5px;
+                color: {theme.text};
+            }}
+            QComboBox QAbstractItemView::item:hover,
+            QComboBox QAbstractItemView::item:selected {{
+                background-color: rgba(140, 130, 120, 0.28);
+                color: {theme.text};
             }}
         """)
         
@@ -393,6 +408,7 @@ class DisplayTab(QWidget):
         tgt_lang_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; font-weight: 500;")
         
         self.tgt_lang_cb = QComboBox()
+        self.tgt_lang_cb.setItemDelegate(QStyledItemDelegate(self.tgt_lang_cb))
         self.tgt_lang_cb.setFixedHeight(30)
         self.tgt_lang_cb.setCursor(Qt.PointingHandCursor)
         self.tgt_lang_cb.setStyleSheet(f"""
@@ -406,10 +422,23 @@ class DisplayTab(QWidget):
                 min-width: 180px;
             }}
             QComboBox QAbstractItemView {{
-                background-color: {theme.surface};
+                background-color: {theme.raised};
                 color: {theme.text};
-                selection-background-color: {theme.teal};
-                border: 1px solid {theme.border};
+                border: 1px solid {theme.border_strong};
+                border-radius: 8px;
+                padding: 4px;
+                outline: none;
+            }}
+            QComboBox QAbstractItemView::item {{
+                min-height: 28px;
+                padding: 4px 10px;
+                border-radius: 5px;
+                color: {theme.text};
+            }}
+            QComboBox QAbstractItemView::item:hover,
+            QComboBox QAbstractItemView::item:selected {{
+                background-color: rgba(140, 130, 120, 0.28);
+                color: {theme.text};
             }}
         """)
         
@@ -849,6 +878,7 @@ class DubTab(QWidget):
         voice_lbl = QLabel("Giọng đọc")
         voice_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px;")
         self.voice_cb = QComboBox()
+        self.voice_cb.setItemDelegate(QStyledItemDelegate(self.voice_cb))
         self.voice_cb.setStyleSheet(f"""
             QComboBox {{
                 background-color: {theme.raised};
@@ -856,6 +886,25 @@ class DubTab(QWidget):
                 color: {theme.text};
                 padding: 6px 12px;
                 border: 1px solid {theme.border};
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {theme.raised};
+                color: {theme.text};
+                border: 1px solid {theme.border_strong};
+                border-radius: 8px;
+                padding: 4px;
+                outline: none;
+            }}
+            QComboBox QAbstractItemView::item {{
+                min-height: 28px;
+                padding: 4px 10px;
+                border-radius: 5px;
+                color: {theme.text};
+            }}
+            QComboBox QAbstractItemView::item:hover,
+            QComboBox QAbstractItemView::item:selected {{
+                background-color: rgba(140, 130, 120, 0.28);
+                color: {theme.text};
             }}
         """)
         
