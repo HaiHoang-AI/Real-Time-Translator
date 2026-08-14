@@ -347,57 +347,11 @@ def _make_tray(app, overlay, main_win, pipeline, settings: AppSettings):
     tray = QSystemTrayIcon(QIcon(pixmap))
     menu = QMenu()
 
-    # Status header (disabled item per design 4a)
-    src = settings.data.ui.src_lang.upper()
-    tgt = settings.data.ui.tgt_lang.upper()
-    status_act = menu.addAction(f"● Đang dịch · {src} → {tgt}")
-    status_act.setEnabled(False)
+    # Exactly 2 menu items as requested
+    ctrl_act = menu.addAction("Cửa sổ điều khiển")
+    ctrl_act.triggered.connect(lambda: main_win.hide() if main_win.isVisible() else (main_win.show(), main_win.activateWindow()))
 
-    menu.addSeparator()
-
-    # Mode action
-    mode_str = "DUB" if settings.data.dub.enabled else "Phụ đề"
-    mode_act = menu.addAction(f"Mode: {mode_str} (⌃⌥D)")
-
-    def toggle_mode() -> None:
-        new_dub = not settings.data.dub.enabled
-        settings.update(dub={"enabled": new_dub})
-        mode_act.setText(f"Mode: {'DUB' if new_dub else 'Phụ đề'} (⌃⌥D)")
-
-    mode_act.triggered.connect(toggle_mode)
-
-    # Target language action
-    tgt_name = "Tiếng Việt" if settings.data.ui.tgt_lang == "vi" else "English"
-    lang_act = menu.addAction(f"Ngôn ngữ đích: {tgt_name} ▸")
-
-    def toggle_lang() -> None:
-        new_tgt = "en" if settings.data.ui.tgt_lang == "vi" else "vi"
-        settings.update(ui={"tgt_lang": new_tgt})
-        new_name = "Tiếng Việt" if new_tgt == "vi" else "English"
-        lang_act.setText(f"Ngôn ngữ đích: {new_name} ▸")
-        status_act.setText(f"● Đang dịch · {settings.data.ui.src_lang.upper()} → {new_tgt.upper()}")
-
-    lang_act.triggered.connect(toggle_lang)
-
-    # Unified Main Window Actions
-    ctrl_act = menu.addAction("Cửa sổ điều khiển (⌃⌥E)")
-    ctrl_act.triggered.connect(lambda: main_win.hide() if main_win.isVisible() else main_win.show())
-
-    history_act = menu.addAction("Xem Lịch sử (Transcript)")
-    history_act.triggered.connect(lambda: (main_win.set_tab(1), main_win.show()))
-
-    move_action = menu.addAction("Di chuyển phụ đề (bật/tắt)")
-    move_action.triggered.connect(overlay.toggle_move_mode)
-
-    menu.addSeparator()
-
-    # Settings action
-    settings_act = menu.addAction("Cài đặt…")
-    settings_act.triggered.connect(lambda: (main_win.set_tab(2), main_win.show()))
-
-    # Quit action
     quit_action = menu.addAction("Thoát")
-
     def do_quit() -> None:
         pipeline.stop()
         tray.hide()
@@ -405,16 +359,9 @@ def _make_tray(app, overlay, main_win, pipeline, settings: AppSettings):
 
     quit_action.triggered.connect(do_quit)
     tray.setContextMenu(menu)
-    tray.setToolTip("Real-Time Translate")
+    tray.setToolTip("Real-Time Translator")
 
-    # Connect settings changed to update tray text
     def update_tray() -> None:
-        s_src = settings.data.ui.src_lang.upper()
-        s_tgt = settings.data.ui.tgt_lang.upper()
-        status_act.setText(f"● Đang dịch · {s_src} → {s_tgt}")
-        mode_act.setText(f"Mode: {'DUB' if settings.data.dub.enabled else 'Phụ đề'} (⌃⌥D)")
-        t_name = "Tiếng Việt" if settings.data.ui.tgt_lang == "vi" else "English"
-        lang_act.setText(f"Ngôn ngữ đích: {t_name} ▸")
         t_colors = get_theme(settings.data.ui.theme)
         apply_theme(menu, t_colors, settings.data.ui.use_custom_fonts)
 
