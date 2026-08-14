@@ -289,23 +289,41 @@ class TranscriptPanel(QWidget):
         self.export_btn.clicked.connect(self.export_transcript)
         header_layout.addWidget(self.export_btn)
 
+        # Toggle Collapsible Sidebar Button
+        self.sidebar_toggle_btn = ElasticButton("Sidebar ⇥")
+        self.sidebar_toggle_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
+        self.sidebar_toggle_btn.setFixedHeight(30)
+        self.sidebar_toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.sidebar_toggle_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.raised};
+                color: {self.theme.text};
+                border: 1px solid {self.theme.border};
+                border-radius: 7px;
+                padding: 0 10px;
+            }}
+            QPushButton:hover {{
+                background-color: {self.theme.border};
+            }}
+        """)
+        self.sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
+        header_layout.addWidget(self.sidebar_toggle_btn)
+
         container_layout.addWidget(header)
 
-        # ── 2. Body Layout (Left Panel + Right Sidebar) ──────────
-        body = QWidget(self.container)
-        body.setStyleSheet("border: none; background: transparent;")
+        # ── 2. Body Layout (Split View) ────────────────────────────
+        body = QWidget()
         body_layout = QHBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # Left Panel (Transcript list)
-        self.left_wrapper = QWidget(body)
-        self.left_wrapper.setStyleSheet("border: none; background: transparent;")
+        # Left Panel (Transcript Entry Rows)
+        self.left_wrapper = QWidget()
         left_layout = QVBoxLayout(self.left_wrapper)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        self.scroll_area = QScrollArea(self.left_wrapper)
+        self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
         self.scroll_area.setStyleSheet(f"""
@@ -336,7 +354,6 @@ class TranscriptPanel(QWidget):
         self.new_items_btn = ElasticButton("↓ Câu mới", self.left_wrapper)
         self.new_items_btn.setCursor(Qt.PointingHandCursor)
         self.new_items_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
-        self.new_items_btn.setCursor(Qt.PointingHandCursor)
         self.new_items_btn.setFixedSize(110, 30)
         self.new_items_btn.setStyleSheet(f"""
             QPushButton {{
@@ -360,11 +377,15 @@ class TranscriptPanel(QWidget):
         # Detect user scroll position
         vbar.valueChanged.connect(self._on_scroll_changed)
 
-        # ── Right Sidebar (200px) ──────────────────────────────────
-        sidebar = QFrame()
-        sidebar.setFixedWidth(200)
-        sidebar.setStyleSheet(f"border-left: 1px solid {self.theme.border}; background: transparent;")
-        sidebar_layout = QVBoxLayout(sidebar)
+        # ── Right Sidebar (200px, Collapsible) ─────────────────────
+        self.sidebar = QFrame()
+        self.sidebar.setFixedWidth(200)
+        self.sidebar.setStyleSheet(f"border-left: 1px solid {self.theme.border}; background: transparent;")
+        self._sidebar_expanded = True
+        self._sidebar_anim = QPropertyAnimation(self.sidebar, b"maximumWidth", self)
+        self._sidebar_anim.setDuration(220)
+        self._sidebar_anim.setEasingCurve(QEasingCurve.OutCubic)
+        sidebar_layout = QVBoxLayout(self.sidebar)
         sidebar_layout.setContentsMargins(16, 16, 16, 16)
         sidebar_layout.setSpacing(16)
 
@@ -429,7 +450,7 @@ class TranscriptPanel(QWidget):
         footer_lbl.setWordWrap(True)
         sidebar_layout.addWidget(footer_lbl)
 
-        body_layout.addWidget(sidebar)
+        body_layout.addWidget(self.sidebar)
         container_layout.addWidget(body)
 
         self.populate_past_sessions()
@@ -480,6 +501,21 @@ class TranscriptPanel(QWidget):
             self.new_items_btn.hide()
         else:
             self._user_scrolled_up = True
+
+    def _toggle_sidebar(self) -> None:
+        self._sidebar_anim.stop()
+        if self._sidebar_expanded:
+            self._sidebar_anim.setStartValue(self.sidebar.width())
+            self._sidebar_anim.setEndValue(0)
+            self._sidebar_expanded = False
+            self.sidebar_toggle_btn.setText("Sidebar ⇤")
+        else:
+            self.sidebar.show()
+            self._sidebar_anim.setStartValue(self.sidebar.width())
+            self._sidebar_anim.setEndValue(200)
+            self._sidebar_expanded = True
+            self.sidebar_toggle_btn.setText("Sidebar ⇥")
+        self._sidebar_anim.start()
 
     def _on_click_new_items(self) -> None:
         self._user_scrolled_up = False

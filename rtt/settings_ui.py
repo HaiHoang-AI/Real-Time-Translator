@@ -335,26 +335,6 @@ class DisplayTab(QWidget):
         align_layout.addWidget(self.align_seg)
         layout.addLayout(align_layout)
 
-        pos_layout = QHBoxLayout()
-        pos_lbl = QLabel("Vị trí")
-        pos_lbl.setStyleSheet(f"color: {theme.dim}; font-size: 12.5px;")
-        self.pos_seg = SegmentControl(["Đáy", "Giữa", "Đỉnh"], theme)
-        self.pos_seg.valueChanged.connect(lambda v: self.settings.update(display={'position': v}))
-        pos_layout.addWidget(pos_lbl)
-        pos_layout.addStretch()
-        pos_layout.addWidget(self.pos_seg)
-        layout.addLayout(pos_layout)
-        
-        screen_layout = QHBoxLayout()
-        screen_lbl = QLabel("Màn hình")
-        screen_lbl.setStyleSheet(f"color: {theme.dim}; font-size: 12.5px;")
-        self.screen_seg = SegmentControl(["1", "2", "theo chuột"], theme)
-        self.screen_seg.valueChanged.connect(lambda v: self.settings.update(display={'screen': v}))
-        screen_layout.addWidget(screen_lbl)
-        screen_layout.addStretch()
-        screen_layout.addWidget(self.screen_seg)
-        layout.addLayout(screen_layout)
-        
         # Toggles
         orig_layout = QHBoxLayout()
         orig_lbl = QLabel("Hiện bản gốc phía trên")
@@ -403,8 +383,6 @@ class DisplayTab(QWidget):
         self.opacity_slider.setValue(int(d.display.bg_opacity * 100))
         align_map = {"left": "Căn trái", "center": "Căn giữa", "right": "Căn phải"}
         self.align_seg.setValue(align_map.get(getattr(d.display, 'alignment', 'center'), "Căn giữa"))
-        self.pos_seg.setValue(d.display.position)
-        self.screen_seg.setValue(d.display.screen)
         self.orig_tog.setChecked(d.display.show_original)
         self.font_tog.setChecked(d.ui.use_custom_fonts)
 

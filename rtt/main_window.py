@@ -227,8 +227,8 @@ class MainWindow(QWidget):
         self.tab_group.setExclusive(True)
 
         tabs_info = [
-            ("📜 Lịch sử hội thoại", 0),
-            ("⚙️ Cài đặt", 1),
+            ("Lịch sử hội thoại", 0),
+            ("Cài đặt", 1),
         ]
 
         self.tab_buttons = []
