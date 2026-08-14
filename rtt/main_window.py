@@ -48,8 +48,11 @@ def font_mono(pt_size: int = 10, weight: QFont.Weight = QFont.Weight.Normal) -> 
     return QFont(_font_mono_str(), pt_size, weight)
 
 
-class TopTabButton(QPushButton):
-    """Top bar navigation tab button."""
+from rtt.motion import ElasticButton, SlidingStackedWidget
+
+
+class TopTabButton(ElasticButton):
+    """Top bar navigation tab button with spring physics scaling."""
 
     def __init__(self, text: str, theme: ThemeColors, parent=None):
         super().__init__(text, parent)
@@ -242,21 +245,21 @@ class MainWindow(QWidget):
         header_layout.addStretch(1)
 
         # Window Controls: Minimize, Maximize/Restore, Close
-        btn_min = QPushButton("─")
+        btn_min = ElasticButton("─")
         btn_min.setFixedSize(28, 28)
         btn_min.setCursor(Qt.PointingHandCursor)
         btn_min.setStyleSheet(f"QPushButton {{ background: transparent; color: {self.theme.text}; border: none; border-radius: 14px; }} QPushButton:hover {{ background: {self.theme.border}; }}")
         btn_min.clicked.connect(self.showMinimized)
         header_layout.addWidget(btn_min)
 
-        btn_max = QPushButton("□")
+        btn_max = ElasticButton("□")
         btn_max.setFixedSize(28, 28)
         btn_max.setCursor(Qt.PointingHandCursor)
         btn_max.setStyleSheet(f"QPushButton {{ background: transparent; color: {self.theme.text}; border: none; border-radius: 14px; }} QPushButton:hover {{ background: {self.theme.border}; }}")
         btn_max.clicked.connect(self._toggle_maximize)
         header_layout.addWidget(btn_max)
 
-        close_btn = QPushButton("✕")
+        close_btn = ElasticButton("✕")
         close_btn.setFixedSize(28, 28)
         close_btn.setCursor(Qt.PointingHandCursor)
         close_btn.setStyleSheet(f"""
@@ -277,7 +280,7 @@ class MainWindow(QWidget):
         container_layout.addWidget(self.header)
 
         # ── 2. Content Stack (2 Pages) ──────────────────────────────
-        self.stack = QStackedWidget(self.container)
+        self.stack = SlidingStackedWidget(self.container)
 
         # Page 0: Transcript Panel
         self.transcript_panel = TranscriptPanel(self.session, self.settings, self.stack)
@@ -305,7 +308,7 @@ class MainWindow(QWidget):
         apply_theme(self, self.theme)
 
     def _switch_tab(self, idx: int) -> None:
-        self.stack.setCurrentIndex(idx)
+        self.stack.slide_to_index(idx)
 
     def set_tab(self, idx: int) -> None:
         if 0 <= idx < len(self.tab_buttons):

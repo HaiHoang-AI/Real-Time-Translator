@@ -13,6 +13,7 @@ from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath, QFont, Q
 try:
     from rtt.theme import get_theme, ThemeColors, DARK, font_ui as _font_ui_str, font_mono as _font_mono_str
     from rtt.settings import AppSettings
+    from rtt.motion import ElasticButton, HoverLiftFrame, PhysicsSlider
 
     def font_ui(weight=400):
         f = QFont(_font_ui_str())
@@ -239,7 +240,7 @@ class SliderWidget(QWidget):
         self.val_lbl.setFont(val_font)
         self.val_lbl.setStyleSheet(f"color: {theme.text};")
         
-        self.slider = QSlider(Qt.Horizontal)
+        self.slider = PhysicsSlider(Qt.Horizontal)
         self.slider.setRange(min_v, max_v)
         self.slider.setStyleSheet(f"""
             QSlider::groove:horizontal {{
@@ -430,14 +431,14 @@ class DisplayTab(QWidget):
         painter.end()
 
 
-class ModelCard(QFrame):
+class ModelCard(HoverLiftFrame):
     clicked = Signal(str)
     def __init__(self, title, vram, wer, lat, prog, rec, theme: ThemeColors):
         super().__init__()
         self.title_str = title
         self.theme = theme
         self.is_active = False
-        
+        self._scale = 1.0
         self.setFixedHeight(64)
         self.setCursor(Qt.PointingHandCursor)
         
@@ -678,7 +679,7 @@ class GlossaryTab(QWidget):
         
         # Add buttons
         btn_layout = QHBoxLayout()
-        add_btn = QPushButton("+ Thêm từ")
+        add_btn = ElasticButton("+ Thêm từ")
         add_btn.setStyleSheet(f"""
             QPushButton {{
                 border: 1px dashed {theme.dim};
@@ -690,7 +691,7 @@ class GlossaryTab(QWidget):
             QPushButton:hover {{ background: {theme.raised}; }}
         """)
         
-        imp_btn = QPushButton("Nhập từ .csv")
+        imp_btn = ElasticButton("Nhập từ .csv")
         imp_btn.setStyleSheet(f"""
             QPushButton {{
                 border: none;
@@ -809,7 +810,7 @@ class Sidebar(QWidget):
         
         tabs = ["Hiển thị", "Model", "Thuật ngữ", "DUB / Cabin"]
         for i, t in enumerate(tabs):
-            btn = QPushButton(t)
+            btn = ElasticButton(t)
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
             btn.setStyleSheet(f"""
@@ -840,7 +841,7 @@ class Sidebar(QWidget):
         
         layout.addStretch()
         
-        self.close_btn = QPushButton("Đóng")
+        self.close_btn = ElasticButton("Đóng")
         self.close_btn.setCursor(Qt.PointingHandCursor)
         self.close_btn.setStyleSheet(f"""
             QPushButton {{

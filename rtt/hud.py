@@ -13,6 +13,7 @@ from rtt.theme import (
     apply_theme, generate_stylesheet, get_theme
 )
 from rtt.settings import AppSettings
+from rtt.motion import ElasticButton, HoverLiftFrame
 
 def _qfont_ui(pt_size: int = 10, weight: QFont.Weight = QFont.Weight.Normal, use_custom: bool = True) -> QFont:
     return QFont(font_ui(use_custom), pt_size, weight)
@@ -287,7 +288,7 @@ class HudPanel(QWidget):
         self.container_layout.addWidget(footer)
 
     def _create_lang_box(self, label_text, lang_text):
-        box = QFrame()
+        box = HoverLiftFrame()
         box.setProperty("class", "LangBox")
         layout = QVBoxLayout(box)
         layout.setContentsMargins(12, 9, 12, 9)
@@ -306,7 +307,7 @@ class HudPanel(QWidget):
         return box
 
     def _create_stat_box(self, label_text, val_text, is_accent):
-        box = QFrame()
+        box = HoverLiftFrame()
         box.setProperty("class", "StatBox")
         layout = QHBoxLayout(box)
         layout.setContentsMargins(10, 8, 10, 8)

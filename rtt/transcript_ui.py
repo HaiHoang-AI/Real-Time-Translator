@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 
 from rtt.history import TranscriptEntry, TranscriptManager, TranscriptSession
 from rtt.settings import AppSettings
+from rtt.motion import ElasticButton, HoverLiftFrame
 from rtt.theme import (
     DARK,
     ThemeColors,
@@ -60,8 +61,8 @@ def font_mono(pt_size: int = 10, weight: QFont.Weight = QFont.Weight.Normal) -> 
 
 # ───────────────────────────────────── Item Widget ───────────────────
 
-class TranscriptEntryWidget(QFrame):
-    """Single row in the transcript list."""
+class TranscriptEntryWidget(HoverLiftFrame):
+    """Single row in the transcript list with hover lift effect."""
 
     def __init__(self, entry: TranscriptEntry, theme: ThemeColors = DARK, is_latest: bool = False, parent=None):
         super().__init__(parent)
@@ -122,7 +123,7 @@ class TranscriptEntryWidget(QFrame):
             painter.drawLine(1, 0, 1, self.height())
 
 
-class FormatButton(QPushButton):
+class FormatButton(ElasticButton):
     def __init__(self, text, theme):
         super().__init__(text)
         self.theme = theme
@@ -269,24 +270,24 @@ class TranscriptPanel(QWidget):
         self.search_input.textChanged.connect(self.filter_entries)
         header_layout.addWidget(self.search_input)
 
-        export_btn = QPushButton("Xuất .srt")
-        export_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
-        export_btn.setCursor(Qt.PointingHandCursor)
-        export_btn.setFixedHeight(30)
-        export_btn.setStyleSheet(f"""
+        self.export_btn = ElasticButton("Xuất .srt")
+        self.export_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
+        self.export_btn.setFixedHeight(30)
+        self.export_btn.setCursor(Qt.PointingHandCursor)
+        self.export_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {self.theme.accent};
                 color: {self.theme.accent_text};
                 border: none;
-                border-radius: 15px;
-                padding: 0 16px;
+                border-radius: 7px;
+                padding: 0 14px;
             }}
             QPushButton:hover {{
                 opacity: 0.9;
             }}
         """)
-        export_btn.clicked.connect(self.export_transcript)
-        header_layout.addWidget(export_btn)
+        self.export_btn.clicked.connect(self.export_transcript)
+        header_layout.addWidget(self.export_btn)
 
         container_layout.addWidget(header)
 
@@ -332,7 +333,8 @@ class TranscriptPanel(QWidget):
         left_layout.addWidget(self.scroll_area, 1)
 
         # Floating "↓ Câu mới" Pill Button
-        self.new_items_btn = QPushButton("↓ Câu mới", self.left_wrapper)
+        self.new_items_btn = ElasticButton("↓ Câu mới", self.left_wrapper)
+        self.new_items_btn.setCursor(Qt.PointingHandCursor)
         self.new_items_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
         self.new_items_btn.setCursor(Qt.PointingHandCursor)
         self.new_items_btn.setFixedSize(110, 30)
