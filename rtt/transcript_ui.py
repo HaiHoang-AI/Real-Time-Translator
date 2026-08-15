@@ -316,7 +316,10 @@ class ClaudeSessionItemWidget(QWidget):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
-            self.clicked.emit(self.session_id)
+            if event.modifiers() & (Qt.ControlModifier | Qt.ShiftModifier):
+                self._toggle_check()
+            else:
+                self.clicked.emit(self.session_id)
         elif event.button() == Qt.RightButton:
             self._show_context_menu(event.globalPosition().toPoint())
         super().mousePressEvent(event)
@@ -764,10 +767,10 @@ class TranscriptPanel(QWidget):
         self.meta_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none;")
         header_layout.addWidget(self.meta_lbl)
 
-        # Pause / Resume Button with Symbols (❚❚ Tạm dừng / ▶ Tiếp tục)
+        # Pause / Resume Button with Fixed Size 110x28 (❚❚ Tạm dừng / ▶ Tiếp tục)
         self.pause_btn = ElasticButton("❚❚ Tạm dừng")
         self.pause_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
-        self.pause_btn.setFixedHeight(28)
+        self.pause_btn.setFixedSize(110, 28)
         self.pause_btn.setCursor(Qt.PointingHandCursor)
         self.pause_btn.setStyleSheet(f"""
             QPushButton {{
@@ -775,7 +778,8 @@ class TranscriptPanel(QWidget):
                 color: {self.theme.text};
                 border: 1px solid {self.theme.border};
                 border-radius: 6px;
-                padding: 0 10px;
+                padding: 0 4px;
+                text-align: center;
             }}
             QPushButton:hover {{
                 border-color: {self.theme.accent};
@@ -998,6 +1002,10 @@ class TranscriptPanel(QWidget):
         self.session_mgr.pin_session(session_id, is_pinned)
 
     def _on_session_deleted(self, session_id: str) -> None:
+        if self.selected_session_ids and (session_id in self.selected_session_ids or len(self.selected_session_ids) > 1):
+            self._delete_selected_sessions()
+            return
+
         reply = QMessageBox.question(
             self,
             "Xác nhận xoá",
@@ -1008,6 +1016,31 @@ class TranscriptPanel(QWidget):
         if reply == QMessageBox.Yes:
             self.selected_session_ids.discard(session_id)
             self.session_mgr.delete_session(session_id)
+
+    def _delete_selected_sessions(self) -> None:
+        target_ids = list(self.selected_session_ids) if self.selected_session_ids else ([self.session.session_id] if self.session else [])
+        if not target_ids:
+            return
+
+        count = len(target_ids)
+        msg = f"Bạn có chắc muốn xoá {count} phiên đã chọn không?" if count > 1 else "Bạn có chắc muốn xoá phiên này không?"
+        reply = QMessageBox.question(
+            self,
+            "Xác nhận xoá phiên",
+            f"{msg}\nDữ liệu đã xoá sẽ không thể khôi phục.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply == QMessageBox.Yes:
+            self.selected_session_ids.clear()
+            self.session_mgr.delete_sessions(target_ids)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key_Delete or (event.key() == Qt.Key_Backspace and event.modifiers() & Qt.ControlModifier):
+            self._delete_selected_sessions()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def _on_cross_search_changed(self, _text: str) -> None:
         self.reload_sessions_list()
@@ -1025,7 +1058,8 @@ class TranscriptPanel(QWidget):
                     color: {self.theme.accent_text};
                     border: none;
                     border-radius: 6px;
-                    padding: 0 10px;
+                    padding: 0 4px;
+                    text-align: center;
                 }}
             """)
         else:
@@ -1036,7 +1070,8 @@ class TranscriptPanel(QWidget):
                     color: {self.theme.text};
                     border: 1px solid {self.theme.border};
                     border-radius: 6px;
-                    padding: 0 10px;
+                    padding: 0 4px;
+                    text-align: center;
                 }}
                 QPushButton:hover {{
                     border-color: {self.theme.accent};

@@ -186,8 +186,8 @@ class _DualSubtitleWidget(QWidget):
         m_curr = QFontMetrics(font_curr)
         m_part = QFontMetrics(font_part)
 
-        # Max single line width: 520px (forces sentences with >6-8 words to wrap into 2-3 lines!)
-        max_wrap_width = min(520, max(320, int(self.width() * 0.45)))
+        # Max single line width: wide cinematic span across screen (max 1200px)
+        max_wrap_width = min(1200, max(650, int(self.width() * 0.90)))
 
         prev_lines = self._wrap(m_prev, self._prev_text, max_wrap_width)[:3] if self._prev_text else []
         curr_lines = self._wrap(m_curr, self._curr_text, max_wrap_width)[:3] if self._curr_text else []
@@ -418,7 +418,7 @@ class SubtitleOverlay(QWidget):
     def _apply_position(self, settings: Optional[AppSettings] = None) -> None:
         """Position the overlay on the correct screen at the correct location."""
         screen = QGuiApplication.primaryScreen().availableGeometry()
-        width = int(screen.width() * 0.72)
+        width = min(1360, max(800, int(screen.width() * 0.88)))
         height = self.subtitle_widget.height() + 20
         self.resize(width, height)
 

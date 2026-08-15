@@ -244,18 +244,40 @@ class MainWindow(QWidget):
 
         header_layout.addStretch(1)
 
-        # Window Controls: Minimize, Maximize/Restore, Close
+        # Window Controls: Minimize, Maximize/Restore, Close (Brown accent color)
         btn_min = ElasticButton("─")
         btn_min.setFixedSize(28, 28)
         btn_min.setCursor(Qt.PointingHandCursor)
-        btn_min.setStyleSheet(f"QPushButton {{ background: transparent; color: {self.theme.text}; border: none; border-radius: 14px; }} QPushButton:hover {{ background: {self.theme.border}; }}")
+        btn_min.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {self.theme.accent};
+                border: none;
+                border-radius: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: rgba(196, 136, 90, 0.18);
+            }}
+        """)
         btn_min.clicked.connect(self.showMinimized)
         header_layout.addWidget(btn_min)
 
         btn_max = ElasticButton("□")
         btn_max.setFixedSize(28, 28)
         btn_max.setCursor(Qt.PointingHandCursor)
-        btn_max.setStyleSheet(f"QPushButton {{ background: transparent; color: {self.theme.text}; border: none; border-radius: 14px; }} QPushButton:hover {{ background: {self.theme.border}; }}")
+        btn_max.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {self.theme.accent};
+                border: none;
+                border-radius: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: rgba(196, 136, 90, 0.18);
+            }}
+        """)
         btn_max.clicked.connect(self._toggle_maximize)
         header_layout.addWidget(btn_max)
 
@@ -265,13 +287,14 @@ class MainWindow(QWidget):
         close_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: transparent;
-                color: {self.theme.text};
+                color: {self.theme.accent};
                 border: none;
                 border-radius: 14px;
                 font-size: 13px;
+                font-weight: bold;
             }}
             QPushButton:hover {{
-                background-color: {self.theme.border};
+                background-color: rgba(196, 136, 90, 0.25);
             }}
         """)
         close_btn.clicked.connect(self.close)

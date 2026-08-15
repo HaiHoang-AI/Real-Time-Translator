@@ -1268,19 +1268,19 @@ class SettingsWindow(QWidget):
 
         btn_min = QPushButton("─")
         btn_min.setFixedSize(28, 24)
-        btn_min.setProperty("class", "ghost")
+        btn_min.setStyleSheet(f"QPushButton {{ background: transparent; color: {self.theme.accent}; border: none; border-radius: 6px; font-weight: bold; }} QPushButton:hover {{ background-color: rgba(196, 136, 90, 0.18); }}")
         btn_min.clicked.connect(self.showMinimized)
         ctrl_layout.addWidget(btn_min)
 
         btn_max = QPushButton("□")
         btn_max.setFixedSize(28, 24)
-        btn_max.setProperty("class", "ghost")
+        btn_max.setStyleSheet(f"QPushButton {{ background: transparent; color: {self.theme.accent}; border: none; border-radius: 6px; font-weight: bold; }} QPushButton:hover {{ background-color: rgba(196, 136, 90, 0.18); }}")
         btn_max.clicked.connect(self._toggle_maximize)
         ctrl_layout.addWidget(btn_max)
 
         btn_close = QPushButton("✕")
         btn_close.setFixedSize(28, 24)
-        btn_close.setProperty("class", "ghost")
+        btn_close.setStyleSheet(f"QPushButton {{ background: transparent; color: {self.theme.accent}; border: none; border-radius: 6px; font-size: 13px; font-weight: bold; }} QPushButton:hover {{ background-color: rgba(196, 136, 90, 0.25); }}")
         btn_close.clicked.connect(self.close)
         ctrl_layout.addWidget(btn_close)
 
