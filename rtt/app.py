@@ -58,8 +58,10 @@ class Pipeline:
             self.session_mgr = session
             self.session = self.session_mgr.active_session
             self.session_mgr.session_switched.connect(self._on_session_switched)
+            self.session_mgr.paused_changed.connect(self._on_pause_toggled)
         elif isinstance(session, TranscriptSession):
             self.session = session
+            self.session.paused_changed.connect(self._on_pause_toggled)
 
         self._stop = threading.Event()
         self._mt_queue: "queue.Queue[str]" = queue.Queue()
@@ -154,6 +156,10 @@ class Pipeline:
     # ------------------------------------------------------------ callbacks
 
     def _on_partial(self, text: str) -> None:
+        if self.session and self.session.is_paused:
+            self.bridge.partial_changed.emit("")
+            return
+
         self.bridge.partial_changed.emit(("… " + text) if text else "")
         # Queue the newest partial for live translation
         tgt = self._tgt_lang()
@@ -169,6 +175,24 @@ class Pipeline:
 
     def _on_session_switched(self, new_sess) -> None:
         self.session = new_sess
+
+    def _on_pause_toggled(self, is_paused: bool) -> None:
+        if is_paused:
+            # Immediately clear overlay subtitle display
+            self.bridge.partial_changed.emit("")
+            self.bridge.committed_changed.emit("")
+            with self._live_lock:
+                self._live_text = None
+            # Drain translation queue
+            while not self._mt_queue.empty():
+                try:
+                    self._mt_queue.get_nowait()
+                except Exception:
+                    break
+        else:
+            # Resumed: clear previous audio buffer so stale audio isn't processed
+            if hasattr(self.stt, "buffer"):
+                self.stt.buffer.clear()
 
     def _on_commit(self, text: str, _latency: float) -> None:
         # Check auto inactivity session split
@@ -216,6 +240,14 @@ class Pipeline:
         t_start = time.monotonic()
         try:
             while not self._stop.is_set():
+                # If paused, drop audio capture and idle lightly without STT
+                if self.session and self.session.is_paused:
+                    _ = cap.read_available()
+                    t_start = time.monotonic()
+                    pushed = 0
+                    time.sleep(chunk_s)
+                    continue
+
                 chunk = res.process(cap.read_available())
                 if chunk.size == 0:
                     time.sleep(chunk_s / 2)

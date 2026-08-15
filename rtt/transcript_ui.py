@@ -1,10 +1,10 @@
 """Transcript Panel & Window UI — Real-time conversation history logger & session manager.
 
 Features:
-- Multi-session sidebar (create, switch, delete, pin, double-click to rename).
+- Left Sidebar with Claude-style minimal design (Pinned, Chats, bullet indicators).
 - Cross-session search across all past sessions and transcripts.
 - Multi-session selection for Gemini AI Summarization.
-- In-session pause/resume controls.
+- In-session pause/resume controls (❚❚ Tạm dừng / ▶ Tiếp tục).
 - Export to .srt, .txt, .md.
 """
 
@@ -147,7 +147,7 @@ class FormatButton(ElasticButton):
         self.setFont(font_ui(9, QFont.Weight.Medium))
         self.setCursor(Qt.PointingHandCursor)
         self.setCheckable(True)
-        self.setFixedHeight(28)
+        self.setFixedHeight(26)
         self.setStyleSheet(self._get_style(False))
         self.toggled.connect(lambda c: self.setStyleSheet(self._get_style(c)))
 
@@ -158,8 +158,8 @@ class FormatButton(ElasticButton):
                     background-color: {self.theme.accent};
                     color: {self.theme.accent_text};
                     border: none;
-                    border-radius: 6px;
-                    padding: 0 12px;
+                    border-radius: 5px;
+                    padding: 0 10px;
                 }}
             """
         else:
@@ -168,8 +168,8 @@ class FormatButton(ElasticButton):
                     background-color: {self.theme.raised};
                     color: {self.theme.dim};
                     border: 1px solid {self.theme.border};
-                    border-radius: 6px;
-                    padding: 0 12px;
+                    border-radius: 5px;
+                    padding: 0 10px;
                 }}
                 QPushButton:hover {{
                     color: {self.theme.text};
@@ -181,17 +181,17 @@ class ToggleCheckBox(QCheckBox):
     def __init__(self, text, theme):
         super().__init__(text)
         self.theme = theme
-        self.setFont(font_ui(9))
+        self.setFont(font_ui(8.5))
         self.setStyleSheet(f"""
             QCheckBox {{
                 color: {self.theme.text};
-                font-size: 12px;
-                spacing: 8px;
+                font-size: 11px;
+                spacing: 6px;
             }}
             QCheckBox::indicator {{
-                width: 32px;
-                height: 18px;
-                border-radius: 9px;
+                width: 26px;
+                height: 15px;
+                border-radius: 7px;
             }}
             QCheckBox::indicator:unchecked {{
                 background-color: {self.theme.border_strong};
@@ -202,16 +202,16 @@ class ToggleCheckBox(QCheckBox):
         """)
 
 
-# ─────────────────────────────── Session Sidebar Item ─────────────────
+# ────────────────────────────── Claude Minimal Session Item ────────────
 
-class SessionItemWidget(HoverLiftFrame):
-    """Interactive card in the sidebar representing a single session."""
+class ClaudeSessionItemWidget(QWidget):
+    """Minimal Claude-style session row with circle bullet, hover lift, and inline edit."""
 
-    clicked = Signal(str)            # session_id
+    clicked = Signal(str)                # session_id
     checked_toggled = Signal(str, bool)  # session_id, checked
-    renamed = Signal(str, str)       # session_id, new_name
-    pin_toggled = Signal(str, bool)  # session_id, is_pinned
-    deleted = Signal(str)            # session_id
+    renamed = Signal(str, str)           # session_id, new_name
+    pin_toggled = Signal(str, bool)      # session_id, is_pinned
+    deleted = Signal(str)                # session_id
 
     def __init__(
         self,
@@ -225,54 +225,51 @@ class SessionItemWidget(HoverLiftFrame):
         self.session_id = session_info["session_id"]
         self.is_active = is_active
         self.theme = theme
+        self.is_checked = False
         self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(34)
         self.setup_ui()
 
     def setup_ui(self) -> None:
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(8)
 
-        # Checkbox for multi-selection (AI Summary)
-        self.cb = QCheckBox()
-        self.cb.setCursor(Qt.PointingHandCursor)
-        self.cb.setStyleSheet(f"""
-            QCheckBox::indicator {{
-                width: 15px;
-                height: 15px;
-                border: 1px solid {self.theme.border_strong};
-                border-radius: 3px;
-                background: {self.theme.bg};
+        # Bullet / Selection toggle button (○ in Claude style)
+        self.bullet_btn = QPushButton("○")
+        self.bullet_btn.setFixedSize(18, 18)
+        self.bullet_btn.setCursor(Qt.PointingHandCursor)
+        self.bullet_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {self.theme.dim};
+                border: none;
+                font-size: 13px;
+                font-weight: bold;
+                padding-bottom: 2px;
             }}
-            QCheckBox::indicator:checked {{
-                background-color: {self.theme.accent};
-                border-color: {self.theme.accent};
+            QPushButton:hover {{
+                color: {self.theme.accent};
             }}
         """)
-        self.cb.toggled.connect(lambda c: self.checked_toggled.emit(self.session_id, c))
-        layout.addWidget(self.cb)
+        self.bullet_btn.clicked.connect(self._toggle_check)
+        layout.addWidget(self.bullet_btn)
 
-        # Info Box (Title + Subtitle)
-        info_box = QWidget()
-        info_box.setStyleSheet("background: transparent; border: none;")
-        info_layout = QVBoxLayout(info_box)
-        info_layout.setContentsMargins(0, 0, 0, 0)
-        info_layout.setSpacing(2)
-
-        # Title Label
+        # Session Title
         title_text = self.info.get("title", f"Phiên {self.session_id}")
         self.title_lbl = QLabel(title_text)
-        self.title_lbl.setFont(font_ui(9, QFont.Weight.DemiBold if self.is_active else QFont.Weight.Medium))
-        title_color = self.theme.accent if self.is_active else self.theme.text
+        weight = QFont.Weight.DemiBold if self.is_active else QFont.Weight.Normal
+        self.title_lbl.setFont(font_ui(9.5, weight))
+        title_color = self.theme.text if self.is_active else self.theme.dim
         self.title_lbl.setStyleSheet(f"color: {title_color}; background: transparent; border: none;")
-        info_layout.addWidget(self.title_lbl)
+        layout.addWidget(self.title_lbl, 1)
 
-        # Inline Rename LineEdit (Hidden by default)
+        # Inline Rename LineEdit
         self.rename_edit = QLineEdit(title_text)
         self.rename_edit.setFont(font_ui(9))
         self.rename_edit.setStyleSheet(f"""
             QLineEdit {{
-                background: {self.theme.bg};
+                background: {self.theme.surface};
                 color: {self.theme.text};
                 border: 1px solid {self.theme.accent};
                 border-radius: 4px;
@@ -281,36 +278,41 @@ class SessionItemWidget(HoverLiftFrame):
         """)
         self.rename_edit.hide()
         self.rename_edit.returnPressed.connect(self._finish_rename)
-        info_layout.addWidget(self.rename_edit)
+        layout.addWidget(self.rename_edit, 1)
 
-        # Subtitle (Duration / Sentence count / Pin label)
-        dur = self.info.get("duration_str", "0′")
-        s_count = self.info.get("sentences", 0)
-        time_str = self.info.get("time_str", "")
-        pin_tag = " [Ghim]" if self.info.get("is_pinned") else ""
-        sub_text = f"{time_str} · {dur} · {s_count} câu{pin_tag}"
+        self._update_style()
 
-        self.sub_lbl = QLabel(sub_text)
-        self.sub_lbl.setFont(font_mono(8))
-        self.sub_lbl.setStyleSheet(f"color: {self.theme.dim}; background: transparent; border: none;")
-        info_layout.addWidget(self.sub_lbl)
+    def _update_style(self) -> None:
+        if self.is_active:
+            bg_style = f"background-color: {self.theme.raised};"
+            border_style = f"border: 1px solid {self.theme.border};"
+        else:
+            bg_style = "background-color: transparent;"
+            border_style = "border: 1px solid transparent;"
 
-        layout.addWidget(info_box, 1)
-
-        # Apply card styling
-        active_border = f"1px solid {self.theme.accent}" if self.is_active else f"1px solid {self.theme.border}"
-        active_bg = f"background: {self.theme.raised};" if self.is_active else "background: transparent;"
         self.setStyleSheet(f"""
-            SessionItemWidget {{
-                {active_bg}
-                border: {active_border};
-                border-radius: 8px;
+            ClaudeSessionItemWidget {{
+                {bg_style}
+                {border_style}
+                border-radius: 7px;
             }}
-            SessionItemWidget:hover {{
-                background: {self.theme.raised};
-                border: 1px solid {self.theme.border_strong};
+            ClaudeSessionItemWidget:hover {{
+                background-color: {self.theme.raised};
             }}
         """)
+
+    def set_checked(self, checked: bool) -> None:
+        self.is_checked = checked
+        if checked:
+            self.bullet_btn.setText("●")
+            self.bullet_btn.setStyleSheet(f"color: {self.theme.accent}; background: transparent; border: none; font-size: 11px;")
+        else:
+            self.bullet_btn.setText("○")
+            self.bullet_btn.setStyleSheet(f"color: {self.theme.dim}; background: transparent; border: none; font-size: 13px;")
+
+    def _toggle_check(self) -> None:
+        self.set_checked(not self.is_checked)
+        self.checked_toggled.emit(self.session_id, self.is_checked)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
@@ -426,7 +428,7 @@ class SummaryDialog(QDialog):
         """)
         layout.addWidget(self.text_area, 1)
 
-        # Action Buttons (No emoji icons as requested)
+        # Action Buttons (No emoji icons)
         btn_bar = QHBoxLayout()
         btn_bar.setSpacing(10)
 
@@ -520,7 +522,7 @@ class SummaryDialog(QDialog):
 # ───────────────────────────────────── Main Panel Widget ──────────────
 
 class TranscriptPanel(QWidget):
-    """Full-featured conversation history, session manager & AI summarizer."""
+    """Full-featured conversation history with Claude-styled left sidebar & AI summarizer."""
 
     def __init__(
         self,
@@ -590,194 +592,33 @@ class TranscriptPanel(QWidget):
         container_layout.setSpacing(0)
         main_layout.addWidget(self.container)
 
-        # ── 1. Header Bar ──────────────────────────────────────────
-        header = QFrame()
-        header.setFixedHeight(50)
-        header.setStyleSheet(f"border-bottom: 1px solid {self.theme.border}; background: transparent;")
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 0, 16, 0)
-        header_layout.setSpacing(12)
-
-        # Active Session Title
-        self.header_title_lbl = QLabel(self.session.display_title if self.session else "Phiên hiện tại")
-        self.header_title_lbl.setFont(font_ui(11, QFont.Weight.DemiBold))
-        self.header_title_lbl.setStyleSheet(f"color: {self.theme.text}; border: none;")
-        header_layout.addWidget(self.header_title_lbl)
-
-        # Meta string (time / count / lang)
-        self.meta_lbl = QLabel("00:00 · 0 câu · EN → VI")
-        self.meta_lbl.setFont(font_mono(9))
-        self.meta_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none;")
-        header_layout.addWidget(self.meta_lbl)
-
-        # Pause / Resume Button
-        self.pause_btn = ElasticButton("Tạm dừng")
-        self.pause_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
-        self.pause_btn.setFixedHeight(28)
-        self.pause_btn.setCursor(Qt.PointingHandCursor)
-        self.pause_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {self.theme.raised};
-                color: {self.theme.text};
-                border: 1px solid {self.theme.border};
-                border-radius: 6px;
-                padding: 0 10px;
-            }}
-            QPushButton:hover {{
-                border-color: {self.theme.accent};
-                color: {self.theme.accent};
-            }}
-        """)
-        self.pause_btn.clicked.connect(self._toggle_pause)
-        header_layout.addWidget(self.pause_btn)
-
-        header_layout.addStretch()
-
-        # In-Session Search
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Tìm trong phiên này")
-        self.search_input.setFont(font_ui(9))
-        self.search_input.setFixedWidth(170)
-        self.search_input.setFixedHeight(30)
-        self.search_input.setStyleSheet(f"""
-            QLineEdit {{
-                background-color: {self.theme.raised};
-                color: {self.theme.text};
-                border: 1px solid {self.theme.border};
-                border-radius: 15px;
-                padding: 0 12px;
-            }}
-        """)
-        self.search_input.textChanged.connect(self.filter_entries)
-        header_layout.addWidget(self.search_input)
-
-        # Export Button (No icon)
-        self.export_btn = ElasticButton("Xuất")
-        self.export_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
-        self.export_btn.setFixedHeight(30)
-        self.export_btn.setCursor(Qt.PointingHandCursor)
-        self.export_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {self.theme.accent};
-                color: {self.theme.accent_text};
-                border: none;
-                border-radius: 7px;
-                padding: 0 14px;
-            }}
-            QPushButton:hover {{
-                opacity: 0.9;
-            }}
-        """)
-        self.export_btn.clicked.connect(self.export_transcript)
-        header_layout.addWidget(self.export_btn)
-
-        # Sidebar Toggle Button
-        self.sidebar_toggle_btn = ElasticButton("Sidebar")
-        self.sidebar_toggle_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
-        self.sidebar_toggle_btn.setFixedHeight(30)
-        self.sidebar_toggle_btn.setCursor(Qt.PointingHandCursor)
-        self.sidebar_toggle_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {self.theme.raised};
-                color: {self.theme.text};
-                border: 1px solid {self.theme.border};
-                border-radius: 7px;
-                padding: 0 10px;
-            }}
-            QPushButton:hover {{
-                background-color: {self.theme.border};
-            }}
-        """)
-        self.sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
-        header_layout.addWidget(self.sidebar_toggle_btn)
-
-        container_layout.addWidget(header)
-
-        # ── 2. Body Layout (Split View) ────────────────────────────
+        # ── 1. Body Layout (Split View: LEFT Sidebar + RIGHT Content) ──
         body = QWidget()
         body_layout = QHBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # Left Panel (Transcript Entry Rows)
-        self.left_wrapper = QWidget()
-        left_layout = QVBoxLayout(self.left_wrapper)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(0)
-
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setFrameShape(QFrame.NoFrame)
-        self.scroll_area.setStyleSheet(f"""
-            QScrollArea {{ border: none; background: transparent; }}
-            QScrollBar:vertical {{
-                background: transparent;
-                width: 8px;
-                margin: 0px;
-            }}
-            QScrollBar::handle:vertical {{
-                background: {self.theme.border_strong};
-                border-radius: 4px;
-                min-height: 20px;
-            }}
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
-        """)
-
-        self.entries_container = QWidget()
-        self.entries_layout = QVBoxLayout(self.entries_container)
-        self.entries_layout.setContentsMargins(16, 16, 16, 16)
-        self.entries_layout.setSpacing(4)
-        self.entries_layout.setAlignment(Qt.AlignTop)
-
-        self.scroll_area.setWidget(self.entries_container)
-        left_layout.addWidget(self.scroll_area, 1)
-
-        # Floating "↓ Câu mới" Pill Button
-        self.new_items_btn = ElasticButton("↓ Câu mới", self.left_wrapper)
-        self.new_items_btn.setCursor(Qt.PointingHandCursor)
-        self.new_items_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
-        self.new_items_btn.setFixedSize(110, 30)
-        self.new_items_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {self.theme.accent};
-                color: {self.theme.accent_text};
-                border: 1px solid {self.theme.border_strong};
-                border-radius: 15px;
-            }}
-        """)
-        self.new_items_btn.hide()
-        self.new_items_btn.clicked.connect(self._on_click_new_items)
-
-        body_layout.addWidget(self.left_wrapper, 1)
-
-        # Smooth scrollbar animation
-        vbar = self.scroll_area.verticalScrollBar()
-        self._scroll_anim = QPropertyAnimation(vbar, b"value", vbar)
-        self._scroll_anim.setDuration(220)
-        self._scroll_anim.setEasingCurve(QEasingCurve.OutCubic)
-        vbar.valueChanged.connect(self._on_scroll_changed)
-
-        # ── Right Sidebar (240px, Collapsible Multi-Session Manager) ──
+        # ── LEFT Sidebar (Claude style, Collapsible, width: 230px) ─────
         self.sidebar = QFrame()
         self.sidebar.setMinimumWidth(0)
-        self.sidebar.setMaximumWidth(250)
-        self.sidebar.setStyleSheet(f"border-left: 1px solid {self.theme.border}; background: {self.theme.bg};")
+        self.sidebar.setMaximumWidth(240)
+        self.sidebar.setStyleSheet(f"border-right: 1px solid {self.theme.border}; background: {self.theme.bg};")
         self._sidebar_expanded = True
         self._sidebar_anim = QPropertyAnimation(self.sidebar, b"maximumWidth", self)
         self._sidebar_anim.setDuration(220)
         self._sidebar_anim.setEasingCurve(QEasingCurve.OutCubic)
 
         sidebar_layout = QVBoxLayout(self.sidebar)
-        sidebar_layout.setContentsMargins(12, 12, 12, 12)
+        sidebar_layout.setContentsMargins(10, 12, 10, 12)
         sidebar_layout.setSpacing(10)
 
-        # Action Buttons (New Session & AI Summarize)
+        # Top Action Buttons
         top_actions = QHBoxLayout()
-        top_actions.setSpacing(8)
+        top_actions.setSpacing(6)
 
         self.new_session_btn = ElasticButton("Phiên mới")
-        self.new_session_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
-        self.new_session_btn.setFixedHeight(32)
+        self.new_session_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
+        self.new_session_btn.setFixedHeight(30)
         self.new_session_btn.setCursor(Qt.PointingHandCursor)
         self.new_session_btn.setStyleSheet(f"""
             QPushButton {{
@@ -795,8 +636,8 @@ class TranscriptPanel(QWidget):
         top_actions.addWidget(self.new_session_btn, 1)
 
         self.summarize_btn = ElasticButton("Tóm tắt AI")
-        self.summarize_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
-        self.summarize_btn.setFixedHeight(32)
+        self.summarize_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
+        self.summarize_btn.setFixedHeight(30)
         self.summarize_btn.setCursor(Qt.PointingHandCursor)
         self.summarize_btn.setStyleSheet(f"""
             QPushButton {{
@@ -816,9 +657,9 @@ class TranscriptPanel(QWidget):
 
         sidebar_layout.addLayout(top_actions)
 
-        # Cross-Session Search Input
+        # Cross-Session Search Bar
         self.cross_search_input = QLineEdit()
-        self.cross_search_input.setPlaceholderText("Tìm kiếm mọi phiên...")
+        self.cross_search_input.setPlaceholderText("Tìm kiếm phiên...")
         self.cross_search_input.setFont(font_ui(8.5))
         self.cross_search_input.setFixedHeight(28)
         self.cross_search_input.setStyleSheet(f"""
@@ -833,7 +674,7 @@ class TranscriptPanel(QWidget):
         self.cross_search_input.textChanged.connect(self._on_cross_search_changed)
         sidebar_layout.addWidget(self.cross_search_input)
 
-        # Scrollable Sessions List
+        # Scrollable Sessions List (Claude-style)
         self.sessions_scroll = QScrollArea()
         self.sessions_scroll.setWidgetResizable(True)
         self.sessions_scroll.setFrameShape(QFrame.NoFrame)
@@ -841,21 +682,16 @@ class TranscriptPanel(QWidget):
 
         self.sessions_container = QWidget()
         self.sessions_layout = QVBoxLayout(self.sessions_container)
-        self.sessions_layout.setContentsMargins(0, 4, 0, 4)
-        self.sessions_layout.setSpacing(6)
+        self.sessions_layout.setContentsMargins(0, 2, 0, 2)
+        self.sessions_layout.setSpacing(2)
         self.sessions_layout.setAlignment(Qt.AlignTop)
 
         self.sessions_scroll.setWidget(self.sessions_container)
         sidebar_layout.addWidget(self.sessions_scroll, 1)
 
-        # Section: Export options
+        # Export Format Bar at Bottom of Sidebar
         exp_sec = QVBoxLayout()
         exp_sec.setSpacing(6)
-
-        exp_lbl = QLabel("ĐỊNH DẠNG XUẤT")
-        exp_lbl.setFont(font_mono(8, QFont.Weight.Bold))
-        exp_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none; letter-spacing: 0.08em;")
-        exp_sec.addWidget(exp_lbl)
 
         tags_layout = QHBoxLayout()
         tags_layout.setSpacing(4)
@@ -881,24 +717,191 @@ class TranscriptPanel(QWidget):
         sidebar_layout.addLayout(exp_sec)
 
         body_layout.addWidget(self.sidebar)
-        container_layout.addWidget(body)
 
+        # ── RIGHT Content Area (Header + Scrollable Transcript) ───────
+        self.right_wrapper = QWidget()
+        right_layout = QVBoxLayout(self.right_wrapper)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+
+        # Header Bar
+        header = QFrame()
+        header.setFixedHeight(50)
+        header.setStyleSheet(f"border-bottom: 1px solid {self.theme.border}; background: transparent;")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(14, 0, 14, 0)
+        header_layout.setSpacing(10)
+
+        # Sidebar Toggle Button (Leftmost in header)
+        self.sidebar_toggle_btn = ElasticButton("Sidebar")
+        self.sidebar_toggle_btn.setFont(font_ui(8.5, QFont.Weight.Medium))
+        self.sidebar_toggle_btn.setFixedHeight(28)
+        self.sidebar_toggle_btn.setCursor(Qt.PointingHandCursor)
+        self.sidebar_toggle_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.raised};
+                color: {self.theme.text};
+                border: 1px solid {self.theme.border};
+                border-radius: 6px;
+                padding: 0 8px;
+            }}
+            QPushButton:hover {{
+                background-color: {self.theme.border};
+            }}
+        """)
+        self.sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
+        header_layout.addWidget(self.sidebar_toggle_btn)
+
+        # Active Session Title
+        self.header_title_lbl = QLabel(self.session.display_title if self.session else "Phiên hiện tại")
+        self.header_title_lbl.setFont(font_ui(10.5, QFont.Weight.DemiBold))
+        self.header_title_lbl.setStyleSheet(f"color: {self.theme.text}; border: none;")
+        header_layout.addWidget(self.header_title_lbl)
+
+        # Metadata
+        self.meta_lbl = QLabel("00:00 · 0 câu · EN → VI")
+        self.meta_lbl.setFont(font_mono(8.5))
+        self.meta_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none;")
+        header_layout.addWidget(self.meta_lbl)
+
+        # Pause / Resume Button with Symbols (❚❚ Tạm dừng / ▶ Tiếp tục)
+        self.pause_btn = ElasticButton("❚❚ Tạm dừng")
+        self.pause_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
+        self.pause_btn.setFixedHeight(28)
+        self.pause_btn.setCursor(Qt.PointingHandCursor)
+        self.pause_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.raised};
+                color: {self.theme.text};
+                border: 1px solid {self.theme.border};
+                border-radius: 6px;
+                padding: 0 10px;
+            }}
+            QPushButton:hover {{
+                border-color: {self.theme.accent};
+                color: {self.theme.accent};
+            }}
+        """)
+        self.pause_btn.clicked.connect(self._toggle_pause)
+        header_layout.addWidget(self.pause_btn)
+
+        header_layout.addStretch()
+
+        # In-Session Search
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Tìm trong phiên...")
+        self.search_input.setFont(font_ui(8.5))
+        self.search_input.setFixedWidth(150)
+        self.search_input.setFixedHeight(28)
+        self.search_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {self.theme.raised};
+                color: {self.theme.text};
+                border: 1px solid {self.theme.border};
+                border-radius: 14px;
+                padding: 0 10px;
+            }}
+        """)
+        self.search_input.textChanged.connect(self.filter_entries)
+        header_layout.addWidget(self.search_input)
+
+        # Export Button
+        self.export_btn = ElasticButton("Xuất")
+        self.export_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
+        self.export_btn.setFixedHeight(28)
+        self.export_btn.setCursor(Qt.PointingHandCursor)
+        self.export_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.accent};
+                color: {self.theme.accent_text};
+                border: none;
+                border-radius: 6px;
+                padding: 0 12px;
+            }}
+            QPushButton:hover {{
+                opacity: 0.9;
+            }}
+        """)
+        self.export_btn.clicked.connect(self.export_transcript)
+        header_layout.addWidget(self.export_btn)
+
+        right_layout.addWidget(header)
+
+        # Scrollable Transcript Entries List
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.NoFrame)
+        self.scroll_area.setStyleSheet(f"""
+            QScrollArea {{ border: none; background: transparent; }}
+            QScrollBar:vertical {{
+                background: transparent;
+                width: 8px;
+                margin: 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {self.theme.border_strong};
+                border-radius: 4px;
+                min-height: 20px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
+        """)
+
+        self.entries_container = QWidget()
+        self.entries_layout = QVBoxLayout(self.entries_container)
+        self.entries_layout.setContentsMargins(16, 16, 16, 16)
+        self.entries_layout.setSpacing(4)
+        self.entries_layout.setAlignment(Qt.AlignTop)
+
+        self.scroll_area.setWidget(self.entries_container)
+        right_layout.addWidget(self.scroll_area, 1)
+
+        # Floating "↓ Câu mới" Pill Button
+        self.new_items_btn = ElasticButton("↓ Câu mới", self.right_wrapper)
+        self.new_items_btn.setCursor(Qt.PointingHandCursor)
+        self.new_items_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
+        self.new_items_btn.setFixedSize(110, 30)
+        self.new_items_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.accent};
+                color: {self.theme.accent_text};
+                border: 1px solid {self.theme.border_strong};
+                border-radius: 15px;
+            }}
+        """)
+        self.new_items_btn.hide()
+        self.new_items_btn.clicked.connect(self._on_click_new_items)
+
+        body_layout.addWidget(self.right_wrapper, 1)
+
+        # Smooth scrollbar animation
+        vbar = self.scroll_area.verticalScrollBar()
+        self._scroll_anim = QPropertyAnimation(vbar, b"value", vbar)
+        self._scroll_anim.setDuration(220)
+        self._scroll_anim.setEasingCurve(QEasingCurve.OutCubic)
+        vbar.valueChanged.connect(self._on_scroll_changed)
+
+        container_layout.addWidget(body)
         self.reload_sessions_list()
 
     # ────────────────────────────── Session Management ────────────────
 
     def set_session(self, session: TranscriptSession) -> None:
-        if self.session:
+        if self.session and self.session != session:
             try:
                 self.session.entry_added.disconnect(self.on_entry_added)
                 self.session.session_updated.disconnect(self.update_meta)
-            except Exception:
+            except (RuntimeError, TypeError):
                 pass
 
+        old_session = self.session
         self.session = session
         if self.session:
-            self.session.entry_added.connect(self.on_entry_added)
-            self.session.session_updated.connect(self.update_meta)
+            if old_session != self.session:
+                try:
+                    self.session.entry_added.connect(self.on_entry_added)
+                    self.session.session_updated.connect(self.update_meta)
+                except (RuntimeError, TypeError):
+                    pass
             self.header_title_lbl.setText(self.session.display_title)
             self.reload_entries()
             self.update_meta()
@@ -921,7 +924,6 @@ class TranscriptPanel(QWidget):
                 self.add_entry_widget(entry, is_latest)
 
     def reload_sessions_list(self) -> None:
-        # Clear existing session items
         while self.sessions_layout.count():
             item = self.sessions_layout.takeAt(0)
             w = item.widget()
@@ -934,34 +936,46 @@ class TranscriptPanel(QWidget):
         active_sid = self.session.session_id if self.session else ""
 
         if not sessions:
-            lbl = QLabel("Không tìm thấy phiên nào")
+            lbl = QLabel("Không tìm thấy phiên")
             lbl.setFont(font_ui(8.5))
             lbl.setStyleSheet(f"color: {self.theme.dim}; padding: 12px; border: none;")
             self.sessions_layout.addWidget(lbl)
             return
 
-        current_group = ""
-        for s in sessions:
-            # Group divider (Hôm nay, Hôm qua, 7 ngày qua, ...)
-            day_group = s.get("day_group", "")
-            if not query and day_group != current_group:
-                current_group = day_group
-                grp_lbl = QLabel(current_group.upper())
-                grp_lbl.setFont(font_mono(7.5, QFont.Weight.Bold))
-                grp_lbl.setStyleSheet(f"color: {self.theme.dim}; opacity: 0.8; margin-top: 6px; border: none;")
-                self.sessions_layout.addWidget(grp_lbl)
+        # Separate into Pinned and Chats lists like Claude.ai
+        pinned_sessions = [s for s in sessions if s.get("is_pinned")]
+        chats_sessions = [s for s in sessions if not s.get("is_pinned")]
 
-            is_active = (s["session_id"] == active_sid)
-            w = SessionItemWidget(s, is_active=is_active, theme=self.theme)
-            w.cb.setChecked(s["session_id"] in self.selected_session_ids)
+        if pinned_sessions:
+            pinned_header = QLabel("Pinned")
+            pinned_header.setFont(font_ui(8.5, QFont.Weight.DemiBold))
+            pinned_header.setStyleSheet(f"color: {self.theme.dim}; padding: 6px 4px 2px 4px; border: none;")
+            self.sessions_layout.addWidget(pinned_header)
 
-            w.clicked.connect(self._on_session_clicked)
-            w.checked_toggled.connect(self._on_session_checked)
-            w.renamed.connect(self._on_session_renamed)
-            w.pin_toggled.connect(self._on_session_pin_toggled)
-            w.deleted.connect(self._on_session_deleted)
+            for s in pinned_sessions:
+                self._add_claude_session_item(s, active_sid)
 
-            self.sessions_layout.addWidget(w)
+        if chats_sessions:
+            chats_header = QLabel("Chats")
+            chats_header.setFont(font_ui(8.5, QFont.Weight.DemiBold))
+            chats_header.setStyleSheet(f"color: {self.theme.dim}; padding: 10px 4px 2px 4px; border: none;")
+            self.sessions_layout.addWidget(chats_header)
+
+            for s in chats_sessions:
+                self._add_claude_session_item(s, active_sid)
+
+    def _add_claude_session_item(self, session_info: dict, active_sid: str) -> None:
+        is_active = (session_info["session_id"] == active_sid)
+        w = ClaudeSessionItemWidget(session_info, is_active=is_active, theme=self.theme)
+        w.set_checked(session_info["session_id"] in self.selected_session_ids)
+
+        w.clicked.connect(self._on_session_clicked)
+        w.checked_toggled.connect(self._on_session_checked)
+        w.renamed.connect(self._on_session_renamed)
+        w.pin_toggled.connect(self._on_session_pin_toggled)
+        w.deleted.connect(self._on_session_deleted)
+
+        self.sessions_layout.addWidget(w)
 
     def _create_new_session(self) -> None:
         self.session_mgr.create_session()
@@ -1004,7 +1018,7 @@ class TranscriptPanel(QWidget):
 
     def _update_pause_ui(self, is_paused: bool) -> None:
         if is_paused:
-            self.pause_btn.setText("Tiếp tục")
+            self.pause_btn.setText("▶ Tiếp tục")
             self.pause_btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {self.theme.accent};
@@ -1015,7 +1029,7 @@ class TranscriptPanel(QWidget):
                 }}
             """)
         else:
-            self.pause_btn.setText("Tạm dừng")
+            self.pause_btn.setText("❚❚ Tạm dừng")
             self.pause_btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {self.theme.raised};
@@ -1035,14 +1049,13 @@ class TranscriptPanel(QWidget):
     def _summarize_selected_sessions(self) -> None:
         target_ids = list(self.selected_session_ids)
         if not target_ids:
-            # If none checked, default to active session
             if self.session and self.session.entries:
                 target_ids = [self.session.session_id]
             else:
                 QMessageBox.information(
                     self,
                     "Chọn phiên",
-                    "Vui lòng tích chọn ít nhất 1 phiên bên sidebar để tóm tắt!",
+                    "Vui lòng nhấn vào vòng tròn ○ trước các phiên để chọn trước khi tóm tắt!",
                 )
                 return
 
@@ -1120,11 +1133,13 @@ class TranscriptPanel(QWidget):
             self._sidebar_anim.setStartValue(self.sidebar.maximumWidth())
             self._sidebar_anim.setEndValue(0)
             self._sidebar_expanded = False
+            self.sidebar_toggle_btn.setText("Hiện Sidebar")
         else:
             self.sidebar.show()
             self._sidebar_anim.setStartValue(self.sidebar.maximumWidth())
-            self._sidebar_anim.setEndValue(250)
+            self._sidebar_anim.setEndValue(240)
             self._sidebar_expanded = True
+            self.sidebar_toggle_btn.setText("Sidebar")
         self._sidebar_anim.start()
 
     def _on_click_new_items(self) -> None:

@@ -127,17 +127,6 @@ class TranscriptSession(QObject):
     def display_title(self) -> str:
         if self.session_name:
             return self.session_name
-        if self.entries:
-            # Auto-title from first entry (prefer target, fallback to source)
-            first = self.entries[0]
-            text = (first.target_text or first.source_text).strip()
-            if text:
-                words = text.split()
-                if len(words) > 8:
-                    text = " ".join(words[:8]) + "…"
-                elif len(text) > 40:
-                    text = text[:38] + "…"
-                return text
         dt = datetime.fromisoformat(self.start_time_iso)
         return f"Phiên {dt.strftime('%d/%m %H:%M')}"
 
@@ -440,20 +429,8 @@ class SessionManager(QObject):
                 is_pinned = meta.get("is_pinned", False)
                 sid = meta.get("session_id", p.stem.replace("session_", ""))
 
-                # Auto title from entries if no custom name
-                entries = raw.get("entries", [])
-                if custom_name:
-                    display_title = custom_name
-                elif entries:
-                    first = entries[0]
-                    t = (first.get("target_text") or first.get("source_text") or "").strip()
-                    if len(t.split()) > 7:
-                        t = " ".join(t.split()[:7]) + "…"
-                    elif len(t) > 38:
-                        t = t[:36] + "…"
-                    display_title = t or f"Phiên {start_dt.strftime('%d/%m %H:%M')}"
-                else:
-                    display_title = f"Phiên {start_dt.strftime('%d/%m %H:%M')}"
+                # Use custom name if set, otherwise standard session title
+                display_title = custom_name if custom_name else f"Phiên {start_dt.strftime('%d/%m %H:%M')}"
 
                 # Relative date string
                 now = datetime.now()
