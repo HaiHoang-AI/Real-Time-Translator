@@ -45,12 +45,22 @@ class Pipeline:
         args,
         bridge,
         settings: AppSettings | None = None,
-        session: TranscriptSession | None = None,
+        session: Any = None,
     ) -> None:
         self.args = args
         self.bridge = bridge
         self.settings = settings
-        self.session = session
+        self.session_mgr = None
+        self.session = None
+
+        from rtt.history import SessionManager, TranscriptSession
+        if isinstance(session, SessionManager):
+            self.session_mgr = session
+            self.session = self.session_mgr.active_session
+            self.session_mgr.session_switched.connect(self._on_session_switched)
+        elif isinstance(session, TranscriptSession):
+            self.session = session
+
         self._stop = threading.Event()
         self._mt_queue: "queue.Queue[str]" = queue.Queue()
         self._threads: list[threading.Thread] = []
@@ -157,7 +167,19 @@ class Pipeline:
             with self._live_lock:
                 self._live_text = text
 
+    def _on_session_switched(self, new_sess) -> None:
+        self.session = new_sess
+
     def _on_commit(self, text: str, _latency: float) -> None:
+        # Check auto inactivity session split
+        if self.session_mgr and self.settings:
+            auto_min = getattr(self.settings.data.summary, "auto_new_session_minutes", 10)
+            self.session_mgr.check_inactivity(auto_min)
+
+        # Skip recording and processing if session is paused
+        if self.session and self.session.is_paused:
+            return
+
         # Strip duplicate headers from safety margins
         prev = getattr(self, "_last_commit_text", None)
         first_dot = text.find(". ")
@@ -446,13 +468,18 @@ def main() -> None:
     # Load settings
     settings = AppSettings()
 
-    # Retention cleanup for sessions older than 7 days
-    cleaned = TranscriptManager.cleanup_old_sessions(7)
-    if cleaned > 0:
-        print(f"[app] cleaned up {cleaned} transcript session(s) older than 7 days")
+    # Create SessionManager & retention cleanup (excluding pinned sessions)
+    from rtt.history import SessionManager
+    src_code = settings.data.ui.src_lang if settings.data.ui.src_lang != "auto" else args.src
+    tgt_code = settings.data.ui.tgt_lang or args.tgt
+    session_mgr = SessionManager(src_lang=src_code, tgt_lang=tgt_code)
 
-    # Create active transcript session
-    session = TranscriptSession(src_lang=args.src, tgt_lang=args.tgt)
+    cleanup_days = getattr(settings.data.summary, "auto_cleanup_days", 30)
+    cleaned = session_mgr.cleanup_old_sessions(cleanup_days)
+    if cleaned > 0:
+        print(f"[app] cleaned up {cleaned} unpinned transcript session(s) older than {cleanup_days} days")
+
+    session = session_mgr.active_session
 
     if args.console:
         t0 = time.time()
@@ -522,7 +549,7 @@ def main() -> None:
     overlay.show()
 
     # Create single unified MainWindow containing HUD, Transcript, and Settings tabs
-    main_window = MainWindow(settings=settings, session=session, bridge=bridge)
+    main_window = MainWindow(settings=settings, session=session_mgr, bridge=bridge)
     main_window.show()
 
     # Keyboard shortcut Ctrl+Alt+E to toggle MainWindow
@@ -530,7 +557,7 @@ def main() -> None:
     shortcut_main.activated.connect(lambda: main_window.hide() if main_window.isVisible() else main_window.show())
 
     # Pipeline
-    pipeline = Pipeline(args, bridge, settings=settings, session=session)
+    pipeline = Pipeline(args, bridge, settings=settings, session=session_mgr)
     bridge.status_changed.emit("Đang tải mô hình…")
     threading.Thread(target=pipeline.start, daemon=True, name="boot").start()
 

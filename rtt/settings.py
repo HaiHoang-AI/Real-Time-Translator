@@ -91,6 +91,16 @@ class UiPrefs:
 
 
 @dataclass
+class SummarySettings:
+    """AI Summary & Session Management settings."""
+    api_key: str = ""                         # Gemini API key
+    model: str = "gemini-2.0-flash"          # gemini-2.0-flash | gemini-1.5-flash | gemini-1.5-pro
+    style: str = "bullet"                     # bullet | paragraph | detailed
+    auto_cleanup_days: int = 30               # auto delete sessions older than X days (0 = disabled)
+    auto_new_session_minutes: int = 10        # auto create new session after X min silence (0 = disabled)
+
+
+@dataclass
 class SettingsData:
     """Root container for all settings."""
     display: DisplaySettings = field(default_factory=DisplaySettings)
@@ -98,6 +108,7 @@ class SettingsData:
     dub: DubSettings = field(default_factory=DubSettings)
     glossary: GlossarySettings = field(default_factory=GlossarySettings)
     ui: UiPrefs = field(default_factory=UiPrefs)
+    summary: SummarySettings = field(default_factory=SummarySettings)
 
 
 # ──────────────────────────────────── AppSettings ──────────────────

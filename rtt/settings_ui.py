@@ -942,6 +942,191 @@ class DubTab(QWidget):
         if idx >= 0: self.voice_cb.setCurrentIndex(idx)
 
 
+class SummaryTab(QWidget):
+    """Tab 5: AI Summarization & Session Management settings."""
+
+    def __init__(self, theme: ThemeColors, settings: AppSettings):
+        super().__init__()
+        self.theme = theme
+        self.settings = settings
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(18)
+
+        # Title & Subtitle
+        title = QLabel("Tóm tắt AI & Quản lý phiên")
+        title.setStyleSheet(f"color: {theme.text}; font-size: 16px; font-weight: 600;")
+        layout.addWidget(title)
+
+        sub = QLabel("Sử dụng Google Gemini AI để tóm tắt các cuộc họp, bài giảng hoặc video dài.")
+        sub.setStyleSheet(f"color: {theme.dim}; font-size: 12.5px;")
+        layout.addWidget(sub)
+
+        # 1. API Key Input
+        api_box = QVBoxLayout()
+        api_box.setSpacing(6)
+
+        api_header = QHBoxLayout()
+        api_lbl = QLabel("Google Gemini API Key")
+        api_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; font-weight: 500;")
+        api_header.addWidget(api_lbl)
+
+        link_lbl = QLabel("<a href='https://aistudio.google.com/apikey' style='color:#4B9E8E; text-decoration:none;'>Lấy API key miễn phí ↗</a>")
+        link_lbl.setOpenExternalLinks(True)
+        link_lbl.setStyleSheet("font-size: 11.5px;")
+        api_header.addStretch()
+        api_header.addWidget(link_lbl)
+        api_box.addLayout(api_header)
+
+        key_row = QHBoxLayout()
+        key_row.setSpacing(8)
+
+        self.api_input = QLineEdit()
+        self.api_input.setEchoMode(QLineEdit.Password)
+        self.api_input.setPlaceholderText("Dán Gemini API Key (AIzaSy...) tại đây")
+        self.api_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {theme.raised};
+                color: {theme.text};
+                border: 1px solid {theme.border};
+                border-radius: 6px;
+                padding: 8px 12px;
+                font-size: 12px;
+            }}
+        """)
+        self.api_input.textChanged.connect(lambda t: self.settings.update(summary={'api_key': t.strip()}))
+        key_row.addWidget(self.api_input, 1)
+
+        self.show_key_btn = ElasticButton("Hiện")
+        self.show_key_btn.setFixedSize(56, 34)
+        self.show_key_btn.setCursor(Qt.PointingHandCursor)
+        self.show_key_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {theme.raised};
+                color: {theme.dim};
+                border: 1px solid {theme.border};
+                border-radius: 6px;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{
+                color: {theme.text};
+            }}
+        """)
+        self.show_key_btn.clicked.connect(self._toggle_show_key)
+        key_row.addWidget(self.show_key_btn)
+        api_box.addLayout(key_row)
+
+        layout.addLayout(api_box)
+
+        # 2. Summary Style
+        style_box = QHBoxLayout()
+        style_lbl = QLabel("Định dạng tóm tắt mặc định")
+        style_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px;")
+        style_box.addWidget(style_lbl)
+
+        self.style_cb = QComboBox()
+        self.style_cb.setItemDelegate(QStyledItemDelegate(self.style_cb))
+        self.style_cb.addItems(["Gạch đầu dòng (Súc tích)", "Đoạn văn ngắn (Liền mạch)", "Báo cáo chi tiết (Đầy đủ)"])
+        self.style_cb.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {theme.raised};
+                border-radius: 6px;
+                color: {theme.text};
+                padding: 6px 12px;
+                border: 1px solid {theme.border};
+                min-width: 180px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {theme.raised};
+                color: {theme.text};
+                border: 1px solid {theme.border_strong};
+                border-radius: 8px;
+                padding: 4px;
+                outline: none;
+            }}
+            QComboBox QAbstractItemView::item:hover {{
+                background-color: rgba(255, 255, 255, 0.08);
+                color: {theme.text};
+            }}
+        """)
+        self.style_cb.currentIndexChanged.connect(self._on_style_changed)
+        style_box.addStretch()
+        style_box.addWidget(self.style_cb)
+        layout.addLayout(style_box)
+
+        # 3. Auto New Session Timeout
+        auto_box = QHBoxLayout()
+        auto_lbl = QLabel("Tự tạo phiên mới khi im lặng")
+        auto_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px;")
+        auto_box.addWidget(auto_lbl)
+
+        self.auto_cb = QComboBox()
+        self.auto_cb.setItemDelegate(QStyledItemDelegate(self.auto_cb))
+        self.auto_cb.addItems(["Sau 5 phút", "Sau 10 phút (Khuyên dùng)", "Sau 15 phút", "Sau 30 phút", "Tắt (Không tự tạo)"])
+        self.auto_cb.setStyleSheet(self.style_cb.styleSheet())
+        self.auto_cb.currentIndexChanged.connect(self._on_auto_timeout_changed)
+        auto_box.addStretch()
+        auto_box.addWidget(self.auto_cb)
+        layout.addLayout(auto_box)
+
+        # 4. Auto Cleanup Days
+        cleanup_box = QHBoxLayout()
+        cleanup_lbl = QLabel("Thời gian lưu trữ phiên")
+        cleanup_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px;")
+        cleanup_box.addWidget(cleanup_lbl)
+
+        self.cleanup_cb = QComboBox()
+        self.cleanup_cb.setItemDelegate(QStyledItemDelegate(self.cleanup_cb))
+        self.cleanup_cb.addItems(["Tự xoá sau 7 ngày", "Tự xoá sau 14 ngày", "Tự xoá sau 30 ngày (Khuyên dùng)", "Lưu vĩnh viễn (Không tự xoá)"])
+        self.cleanup_cb.setStyleSheet(self.style_cb.styleSheet())
+        self.cleanup_cb.currentIndexChanged.connect(self._on_cleanup_changed)
+        cleanup_box.addStretch()
+        cleanup_box.addWidget(self.cleanup_cb)
+        layout.addLayout(cleanup_box)
+
+        # Info Box
+        info = QLabel("Mẹo: Bạn có thể chọn cùng lúc nhiều phiên trong tab Lịch sử hội thoại rồi nhấn \"Tóm tắt AI\" để tạo một bản báo cáo tổng hợp nhanh chóng.")
+        info.setWordWrap(True)
+        info.setStyleSheet(f"background-color: {theme.raised}; color: {theme.dim}; padding: 12px; border-radius: 8px; font-size: 12px;")
+        layout.addWidget(info)
+
+        layout.addStretch()
+        self._load_settings()
+
+    def _toggle_show_key(self) -> None:
+        if self.api_input.echoMode() == QLineEdit.Password:
+            self.api_input.setEchoMode(QLineEdit.Normal)
+            self.show_key_btn.setText("Ẩn")
+        else:
+            self.api_input.setEchoMode(QLineEdit.Password)
+            self.show_key_btn.setText("Hiện")
+
+    def _on_style_changed(self, idx: int) -> None:
+        style_map = {0: "bullet", 1: "paragraph", 2: "detailed"}
+        self.settings.update(summary={'style': style_map.get(idx, "bullet")})
+
+    def _on_auto_timeout_changed(self, idx: int) -> None:
+        timeout_map = {0: 5, 1: 10, 2: 15, 3: 30, 4: 0}
+        self.settings.update(summary={'auto_new_session_minutes': timeout_map.get(idx, 10)})
+
+    def _on_cleanup_changed(self, idx: int) -> None:
+        cleanup_map = {0: 7, 1: 14, 2: 30, 3: 0}
+        self.settings.update(summary={'auto_cleanup_days': cleanup_map.get(idx, 30)})
+
+    def _load_settings(self) -> None:
+        s = self.settings.data.summary
+        self.api_input.setText(s.api_key)
+
+        style_inv = {"bullet": 0, "paragraph": 1, "detailed": 2}
+        self.style_cb.setCurrentIndex(style_inv.get(s.style, 0))
+
+        timeout_inv = {5: 0, 10: 1, 15: 2, 30: 3, 0: 4}
+        self.auto_cb.setCurrentIndex(timeout_inv.get(s.auto_new_session_minutes, 1))
+
+        cleanup_inv = {7: 0, 14: 1, 30: 2, 0: 3}
+        self.cleanup_cb.setCurrentIndex(cleanup_inv.get(s.auto_cleanup_days, 2))
+
+
 class Sidebar(QWidget):
     tabChanged = Signal(int)
     
@@ -961,7 +1146,7 @@ class Sidebar(QWidget):
         self.btn_group = QButtonGroup(self)
         self.btn_group.setExclusive(True)
         
-        tabs = ["Hiển thị", "Model", "Thuật ngữ", "DUB / Cabin"]
+        tabs = ["Hiển thị", "Model", "Thuật ngữ", "DUB / Cabin", "Tóm tắt AI"]
         for i, t in enumerate(tabs):
             btn = ElasticButton(t)
             btn.setCheckable(True)
@@ -1035,6 +1220,7 @@ class SettingsPanel(QWidget):
         self.stack.addWidget(ModelTab(self.theme, self.settings))
         self.stack.addWidget(GlossaryTab(self.theme, self.settings))
         self.stack.addWidget(DubTab(self.theme, self.settings))
+        self.stack.addWidget(SummaryTab(self.theme, self.settings))
 
         content_layout.addWidget(self.stack, 1)
 
