@@ -1150,7 +1150,7 @@ class Sidebar(QWidget):
         self.btn_group = QButtonGroup(self)
         self.btn_group.setExclusive(True)
         
-        tabs = ["Hiển thị", "Model", "Thuật ngữ", "DUB / Cabin", "Tóm tắt AI"]
+        tabs = ["Hiển thị", "Model", "DUB / Cabin", "Tóm tắt AI"]
         for i, t in enumerate(tabs):
             btn = ElasticButton(t)
             btn.setCheckable(True)
@@ -1222,7 +1222,6 @@ class SettingsPanel(QWidget):
         self.stack = QStackedWidget()
         self.stack.addWidget(DisplayTab(self.theme, self.settings))
         self.stack.addWidget(ModelTab(self.theme, self.settings))
-        self.stack.addWidget(GlossaryTab(self.theme, self.settings))
         self.stack.addWidget(DubTab(self.theme, self.settings))
         self.stack.addWidget(SummaryTab(self.theme, self.settings))
 
@@ -1293,7 +1292,6 @@ class SettingsWindow(QWidget):
         self.stack = QStackedWidget()
         self.stack.addWidget(DisplayTab(self.theme, self.settings))
         self.stack.addWidget(ModelTab(self.theme, self.settings))
-        self.stack.addWidget(GlossaryTab(self.theme, self.settings))
         self.stack.addWidget(DubTab(self.theme, self.settings))
         
         content_layout.addWidget(self.stack, 1)
