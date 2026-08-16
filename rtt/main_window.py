@@ -244,61 +244,63 @@ class MainWindow(QWidget):
 
         header_layout.addStretch(1)
 
-        # Window Controls: Minimize, Maximize/Restore, Close (Warm earth brown #C4885A)
-        btn_min = ElasticButton("─")
-        btn_min.setFixedSize(28, 28)
+        # Window Controls: Minimize, Maximize/Restore, Close (Warm earth brown accent)
+        btn_min = QPushButton("─")
+        btn_min.setFixedSize(30, 26)
         btn_min.setCursor(Qt.PointingHandCursor)
-        btn_min.setStyleSheet("""
-            QPushButton {
+        btn_min.setStyleSheet(f"""
+            QPushButton {{
                 background: transparent;
-                color: #C4885A;
+                color: {self.theme.accent};
                 border: none;
-                border-radius: 14px;
+                border-radius: 6px;
+                font-size: 12px;
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(196, 136, 90, 0.22);
-                color: #D99B6C;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: rgba(196, 136, 90, 0.25);
+                color: {self.theme.text};
+            }}
         """)
         btn_min.clicked.connect(self.showMinimized)
         header_layout.addWidget(btn_min)
 
-        btn_max = ElasticButton("□")
-        btn_max.setFixedSize(28, 28)
+        btn_max = QPushButton("□")
+        btn_max.setFixedSize(30, 26)
         btn_max.setCursor(Qt.PointingHandCursor)
-        btn_max.setStyleSheet("""
-            QPushButton {
+        btn_max.setStyleSheet(f"""
+            QPushButton {{
                 background: transparent;
-                color: #C4885A;
+                color: {self.theme.accent};
                 border: none;
-                border-radius: 14px;
+                border-radius: 6px;
+                font-size: 12px;
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(196, 136, 90, 0.22);
-                color: #D99B6C;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: rgba(196, 136, 90, 0.25);
+                color: {self.theme.text};
+            }}
         """)
         btn_max.clicked.connect(self._toggle_maximize)
         header_layout.addWidget(btn_max)
 
-        close_btn = ElasticButton("✕")
-        close_btn.setFixedSize(28, 28)
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(30, 26)
         close_btn.setCursor(Qt.PointingHandCursor)
-        close_btn.setStyleSheet("""
-            QPushButton {
+        close_btn.setStyleSheet(f"""
+            QPushButton {{
                 background-color: transparent;
-                color: #C4885A;
+                color: {self.theme.accent};
                 border: none;
-                border-radius: 14px;
+                border-radius: 6px;
                 font-size: 13px;
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: rgba(196, 136, 90, 0.28);
-                color: #E8A878;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: rgba(196, 136, 90, 0.35);
+                color: {self.theme.text};
+            }}
         """)
         close_btn.clicked.connect(self.close)
         header_layout.addWidget(close_btn)

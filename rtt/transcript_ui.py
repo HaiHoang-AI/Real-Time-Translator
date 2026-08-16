@@ -647,7 +647,7 @@ class TranscriptPanel(QWidget):
         # "Lịch sử phiên" Header & Cross-Session Search Bar
         hist_lbl = QLabel("Lịch sử phiên")
         hist_lbl.setFont(font_ui(8.5, QFont.Weight.Bold))
-        hist_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none;")
+        hist_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none; padding-left: 2px;")
         sidebar_layout.addWidget(hist_lbl)
 
         self.cross_search_input = QLineEdit()
@@ -694,8 +694,8 @@ class TranscriptPanel(QWidget):
         header.setFixedHeight(50)
         header.setStyleSheet(f"border-bottom: 1px solid {self.theme.border}; background: transparent;")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(14, 0, 14, 0)
-        header_layout.setSpacing(10)
+        header_layout.setContentsMargins(10, 0, 10, 0)
+        header_layout.setSpacing(6)
 
         # Sidebar Toggle Button (Leftmost in header)
         self.sidebar_toggle_btn = ElasticButton("◧ Sidebar")
@@ -719,20 +719,20 @@ class TranscriptPanel(QWidget):
 
         # Active Session Title
         self.header_title_lbl = QLabel(self.session.display_title if self.session else "Phiên hiện tại")
-        self.header_title_lbl.setFont(font_ui(10.5, QFont.Weight.DemiBold))
+        self.header_title_lbl.setFont(font_ui(10, QFont.Weight.DemiBold))
         self.header_title_lbl.setStyleSheet(f"color: {self.theme.text}; border: none;")
         header_layout.addWidget(self.header_title_lbl)
 
         # Metadata
         self.meta_lbl = QLabel("00:00 · 0 câu · EN → VI")
-        self.meta_lbl.setFont(font_mono(8.5))
+        self.meta_lbl.setFont(font_mono(8))
         self.meta_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none;")
         header_layout.addWidget(self.meta_lbl)
 
         # Pause / Resume Button
         self.pause_btn = ElasticButton("❚❚ Tạm dừng")
         self.pause_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
-        self.pause_btn.setFixedSize(110, 28)
+        self.pause_btn.setFixedSize(100, 28)
         self.pause_btn.setCursor(Qt.PointingHandCursor)
         self.pause_btn.setStyleSheet(f"""
             QPushButton {{
@@ -751,13 +751,13 @@ class TranscriptPanel(QWidget):
         self.pause_btn.clicked.connect(self._toggle_pause)
         header_layout.addWidget(self.pause_btn)
 
-        header_layout.addStretch()
+        header_layout.addStretch(1)
 
         # In-Session Search
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Tìm trong phiên...")
         self.search_input.setFont(font_ui(8.5))
-        self.search_input.setFixedWidth(150)
+        self.search_input.setFixedWidth(120)
         self.search_input.setFixedHeight(28)
         self.search_input.setStyleSheet(f"""
             QLineEdit {{
@@ -771,8 +771,8 @@ class TranscriptPanel(QWidget):
         self.search_input.textChanged.connect(self.filter_entries)
         header_layout.addWidget(self.search_input)
 
-        # Toggle Button for Right Sidebar (Tóm tắt & Xuất)
-        self.right_sidebar_toggle_btn = ElasticButton("Tóm tắt & Xuất ⚡")
+        # Toggle Button for Right Sidebar (Tóm tắt && Xuất)
+        self.right_sidebar_toggle_btn = ElasticButton("Tóm tắt && Xuất ⚡")
         self.right_sidebar_toggle_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
         self.right_sidebar_toggle_btn.setFixedHeight(28)
         self.right_sidebar_toggle_btn.setCursor(Qt.PointingHandCursor)
@@ -782,7 +782,7 @@ class TranscriptPanel(QWidget):
                 color: {self.theme.accent_text};
                 border: none;
                 border-radius: 6px;
-                padding: 0 12px;
+                padding: 0 10px;
             }}
             QPushButton:hover {{
                 opacity: 0.9;
