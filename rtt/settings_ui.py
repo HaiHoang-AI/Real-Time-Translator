@@ -278,11 +278,42 @@ class SliderWidget(QWidget):
         self.slider.setValue(v)
 
 
+def make_scrollable_tab(widget: QWidget, theme: ThemeColors) -> QScrollArea:
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.NoFrame)
+    scroll.setStyleSheet(f"""
+        QScrollArea {{
+            background: transparent;
+            border: none;
+        }}
+        QScrollBar:vertical {{
+            background: transparent;
+            width: 8px;
+            margin: 0px;
+        }}
+        QScrollBar::handle:vertical {{
+            background: {theme.border_strong};
+            border-radius: 4px;
+            min-height: 24px;
+        }}
+        QScrollBar::handle:vertical:hover {{
+            background: {theme.accent};
+        }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+            height: 0px;
+        }}
+    """)
+    scroll.setWidget(widget)
+    return scroll
+
+
 class DisplayTab(QWidget):
     def __init__(self, theme: ThemeColors, settings: AppSettings):
         super().__init__()
         self.theme = theme
         self.settings = settings
+        self.setMinimumHeight(480)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(20)
@@ -650,6 +681,7 @@ class ModelTab(QWidget):
         super().__init__()
         self.theme = theme
         self.settings = settings
+        self.setMinimumHeight(540)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(14)
@@ -704,6 +736,7 @@ class ModelTab(QWidget):
 
         for key, name, sub_text, desc in mt_options:
             frame = QFrame()
+            frame.setMinimumHeight(74)
             frame.setCursor(Qt.PointingHandCursor)
             frame_layout = QVBoxLayout(frame)
             frame_layout.setContentsMargins(12, 10, 12, 10)
@@ -864,6 +897,7 @@ class DubTab(QWidget):
         super().__init__()
         self.theme = theme
         self.settings = settings
+        self.setMinimumHeight(400)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(24)
@@ -953,6 +987,7 @@ class SummaryTab(QWidget):
         super().__init__()
         self.theme = theme
         self.settings = settings
+        self.setMinimumHeight(460)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.setSpacing(18)
@@ -1220,10 +1255,10 @@ class SettingsPanel(QWidget):
         content_layout.setContentsMargins(0, 0, 0, 0)
 
         self.stack = QStackedWidget()
-        self.stack.addWidget(DisplayTab(self.theme, self.settings))
-        self.stack.addWidget(ModelTab(self.theme, self.settings))
-        self.stack.addWidget(DubTab(self.theme, self.settings))
-        self.stack.addWidget(SummaryTab(self.theme, self.settings))
+        self.stack.addWidget(make_scrollable_tab(DisplayTab(self.theme, self.settings), self.theme))
+        self.stack.addWidget(make_scrollable_tab(ModelTab(self.theme, self.settings), self.theme))
+        self.stack.addWidget(make_scrollable_tab(DubTab(self.theme, self.settings), self.theme))
+        self.stack.addWidget(make_scrollable_tab(SummaryTab(self.theme, self.settings), self.theme))
 
         content_layout.addWidget(self.stack, 1)
 
@@ -1290,9 +1325,9 @@ class SettingsWindow(QWidget):
         content_layout.addWidget(win_control_bar)
         
         self.stack = QStackedWidget()
-        self.stack.addWidget(DisplayTab(self.theme, self.settings))
-        self.stack.addWidget(ModelTab(self.theme, self.settings))
-        self.stack.addWidget(DubTab(self.theme, self.settings))
+        self.stack.addWidget(make_scrollable_tab(DisplayTab(self.theme, self.settings), self.theme))
+        self.stack.addWidget(make_scrollable_tab(ModelTab(self.theme, self.settings), self.theme))
+        self.stack.addWidget(make_scrollable_tab(DubTab(self.theme, self.settings), self.theme))
         
         content_layout.addWidget(self.stack, 1)
 
