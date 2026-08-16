@@ -191,11 +191,11 @@ class MainWindow(QWidget):
 
         # ── 1. Top Header Bar with Navigation Tabs ──────────────────
         self.header = HeaderBar(self, self.container)
-        self.header.setFixedHeight(54)
+        self.header.setFixedHeight(48)
         self.header.setStyleSheet(f"border-bottom: 1px solid {self.theme.border}; background: transparent;")
         header_layout = QHBoxLayout(self.header)
-        header_layout.setContentsMargins(16, 0, 16, 0)
-        header_layout.setSpacing(12)
+        header_layout.setContentsMargins(14, 0, 10, 0)
+        header_layout.setSpacing(10)
 
         # Logo badge & status dot
         self.dot = PulsingDot(self.theme.teal)
@@ -244,64 +244,39 @@ class MainWindow(QWidget):
 
         header_layout.addStretch(1)
 
-        # Window Controls: Minimize, Maximize/Restore, Close (Warm earth brown accent)
-        btn_min = QPushButton("─")
-        btn_min.setFixedSize(30, 26)
-        btn_min.setCursor(Qt.PointingHandCursor)
-        btn_min.setStyleSheet(f"""
+        # Window Controls: Minimize, Maximize/Restore, Close
+        _wc_style = lambda hover_alpha: f"""
             QPushButton {{
                 background: transparent;
-                color: {self.theme.accent};
+                color: {self.theme.dim};
                 border: none;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: bold;
+                border-radius: 5px;
+                font-size: 13px;
             }}
             QPushButton:hover {{
-                background-color: rgba(196, 136, 90, 0.25);
-                color: {self.theme.text};
+                background-color: rgba(196, 136, 90, {hover_alpha});
+                color: {self.theme.accent};
             }}
-        """)
+        """
+
+        btn_min = QPushButton("─")
+        btn_min.setFixedSize(32, 28)
+        btn_min.setCursor(Qt.PointingHandCursor)
+        btn_min.setStyleSheet(_wc_style(0.18))
         btn_min.clicked.connect(self.showMinimized)
         header_layout.addWidget(btn_min)
 
         btn_max = QPushButton("□")
-        btn_max.setFixedSize(30, 26)
+        btn_max.setFixedSize(32, 28)
         btn_max.setCursor(Qt.PointingHandCursor)
-        btn_max.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent;
-                color: {self.theme.accent};
-                border: none;
-                border-radius: 6px;
-                font-size: 12px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: rgba(196, 136, 90, 0.25);
-                color: {self.theme.text};
-            }}
-        """)
+        btn_max.setStyleSheet(_wc_style(0.18))
         btn_max.clicked.connect(self._toggle_maximize)
         header_layout.addWidget(btn_max)
 
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(30, 26)
+        close_btn.setFixedSize(32, 28)
         close_btn.setCursor(Qt.PointingHandCursor)
-        close_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: transparent;
-                color: {self.theme.accent};
-                border: none;
-                border-radius: 6px;
-                font-size: 13px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: rgba(196, 136, 90, 0.35);
-                color: {self.theme.text};
-            }}
-        """)
+        close_btn.setStyleSheet(_wc_style(0.30))
         close_btn.clicked.connect(self.close)
         header_layout.addWidget(close_btn)
 

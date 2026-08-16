@@ -608,10 +608,10 @@ class TranscriptPanel(QWidget):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # ── LEFT Sidebar (Claude style, Collapsible, width: 240px) ─────
+        # ── LEFT Sidebar (Collapsible, width: 220px) ─────────────────
         self.sidebar = QFrame()
         self.sidebar.setMinimumWidth(0)
-        self.sidebar.setMaximumWidth(240)
+        self.sidebar.setMaximumWidth(220)
         self.sidebar.setStyleSheet(f"border-right: 1px solid {self.theme.border}; background: {self.theme.bg};")
         self._sidebar_expanded = True
         self._sidebar_anim = QPropertyAnimation(self.sidebar, b"maximumWidth", self)
@@ -619,11 +619,11 @@ class TranscriptPanel(QWidget):
         self._sidebar_anim.setEasingCurve(QEasingCurve.OutCubic)
 
         sidebar_layout = QVBoxLayout(self.sidebar)
-        sidebar_layout.setContentsMargins(10, 12, 10, 12)
-        sidebar_layout.setSpacing(10)
+        sidebar_layout.setContentsMargins(10, 10, 10, 10)
+        sidebar_layout.setSpacing(8)
 
-        # Top Action: "+ Phiên mới" Full Width Button
-        self.new_session_btn = ElasticButton("+ Phiên mới")
+        # "+  Phiên mới" Button — full width, clean
+        self.new_session_btn = ElasticButton("+  Phiên mới")
         self.new_session_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
         self.new_session_btn.setFixedHeight(34)
         self.new_session_btn.setCursor(Qt.PointingHandCursor)
@@ -634,7 +634,6 @@ class TranscriptPanel(QWidget):
                 border: 1px solid {self.theme.border};
                 border-radius: 8px;
                 padding: 0 12px;
-                text-align: left;
             }}
             QPushButton:hover {{
                 border-color: {self.theme.accent};
@@ -644,12 +643,13 @@ class TranscriptPanel(QWidget):
         self.new_session_btn.clicked.connect(self._create_new_session)
         sidebar_layout.addWidget(self.new_session_btn)
 
-        # "Lịch sử phiên" Header & Cross-Session Search Bar
-        hist_lbl = QLabel("Lịch sử phiên")
-        hist_lbl.setFont(font_ui(8.5, QFont.Weight.Bold))
-        hist_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none; padding-left: 2px;")
+        # Section label
+        hist_lbl = QLabel("Chats")
+        hist_lbl.setFont(font_ui(8, QFont.Weight.Bold))
+        hist_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none; padding: 4px 2px 0 2px;")
         sidebar_layout.addWidget(hist_lbl)
 
+        # Cross-session search
         self.cross_search_input = QLineEdit()
         self.cross_search_input.setPlaceholderText("Tìm kiếm phiên...")
         self.cross_search_input.setFont(font_ui(8.5))
@@ -666,56 +666,34 @@ class TranscriptPanel(QWidget):
         self.cross_search_input.textChanged.connect(self._on_cross_search_changed)
         sidebar_layout.addWidget(self.cross_search_input)
 
-        # Scrollable Sessions List
+        # Scrollable session list
         self.sessions_scroll = QScrollArea()
         self.sessions_scroll.setWidgetResizable(True)
         self.sessions_scroll.setFrameShape(QFrame.NoFrame)
         self.sessions_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-
         self.sessions_container = QWidget()
         self.sessions_layout = QVBoxLayout(self.sessions_container)
         self.sessions_layout.setContentsMargins(0, 2, 0, 2)
         self.sessions_layout.setSpacing(2)
         self.sessions_layout.setAlignment(Qt.AlignTop)
-
         self.sessions_scroll.setWidget(self.sessions_container)
         sidebar_layout.addWidget(self.sessions_scroll, 1)
 
         body_layout.addWidget(self.sidebar)
 
-        # ── CENTER Content Area (Header + Scrollable Transcript) ───────
+        # ── CENTER Content Area (Header + Scrollable Transcript) ─────
         self.right_wrapper = QWidget()
         right_layout = QVBoxLayout(self.right_wrapper)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
-        # Header Bar
+        # ── Header Bar ──
         header = QFrame()
-        header.setFixedHeight(50)
+        header.setFixedHeight(46)
         header.setStyleSheet(f"border-bottom: 1px solid {self.theme.border}; background: transparent;")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(10, 0, 10, 0)
-        header_layout.setSpacing(6)
-
-        # Sidebar Toggle Button (Leftmost in header)
-        self.sidebar_toggle_btn = ElasticButton("◧ Sidebar")
-        self.sidebar_toggle_btn.setFont(font_ui(8.5, QFont.Weight.Medium))
-        self.sidebar_toggle_btn.setFixedHeight(28)
-        self.sidebar_toggle_btn.setCursor(Qt.PointingHandCursor)
-        self.sidebar_toggle_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {self.theme.raised};
-                color: {self.theme.text};
-                border: 1px solid {self.theme.border};
-                border-radius: 6px;
-                padding: 0 8px;
-            }}
-            QPushButton:hover {{
-                background-color: {self.theme.border};
-            }}
-        """)
-        self.sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
-        header_layout.addWidget(self.sidebar_toggle_btn)
+        header_layout.setContentsMargins(12, 0, 12, 0)
+        header_layout.setSpacing(8)
 
         # Active Session Title
         self.header_title_lbl = QLabel(self.session.display_title if self.session else "Phiên hiện tại")
@@ -723,16 +701,16 @@ class TranscriptPanel(QWidget):
         self.header_title_lbl.setStyleSheet(f"color: {self.theme.text}; border: none;")
         header_layout.addWidget(self.header_title_lbl)
 
-        # Metadata
-        self.meta_lbl = QLabel("00:00 · 0 câu · EN → VI")
+        # Metadata label
+        self.meta_lbl = QLabel("00:00 · 0 câu · AUTO → VI")
         self.meta_lbl.setFont(font_mono(8))
         self.meta_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none;")
         header_layout.addWidget(self.meta_lbl)
 
-        # Pause / Resume Button
+        # Pause / Resume
         self.pause_btn = ElasticButton("❚❚ Tạm dừng")
-        self.pause_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
-        self.pause_btn.setFixedSize(100, 28)
+        self.pause_btn.setFont(font_ui(8, QFont.Weight.DemiBold))
+        self.pause_btn.setFixedSize(95, 26)
         self.pause_btn.setCursor(Qt.PointingHandCursor)
         self.pause_btn.setStyleSheet(f"""
             QPushButton {{
@@ -741,7 +719,6 @@ class TranscriptPanel(QWidget):
                 border: 1px solid {self.theme.border};
                 border-radius: 6px;
                 padding: 0 4px;
-                text-align: center;
             }}
             QPushButton:hover {{
                 border-color: {self.theme.accent};
@@ -756,27 +733,27 @@ class TranscriptPanel(QWidget):
         # In-Session Search
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Tìm trong phiên...")
-        self.search_input.setFont(font_ui(8.5))
-        self.search_input.setFixedWidth(120)
-        self.search_input.setFixedHeight(28)
+        self.search_input.setFont(font_ui(8))
+        self.search_input.setFixedWidth(130)
+        self.search_input.setFixedHeight(26)
         self.search_input.setStyleSheet(f"""
             QLineEdit {{
                 background-color: {self.theme.raised};
                 color: {self.theme.text};
                 border: 1px solid {self.theme.border};
-                border-radius: 14px;
+                border-radius: 13px;
                 padding: 0 10px;
             }}
         """)
         self.search_input.textChanged.connect(self.filter_entries)
         header_layout.addWidget(self.search_input)
 
-        # Toggle Button for Right Sidebar (Tóm tắt && Xuất)
-        self.right_sidebar_toggle_btn = ElasticButton("Tóm tắt && Xuất ⚡")
-        self.right_sidebar_toggle_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
-        self.right_sidebar_toggle_btn.setFixedHeight(28)
-        self.right_sidebar_toggle_btn.setCursor(Qt.PointingHandCursor)
-        self.right_sidebar_toggle_btn.setStyleSheet(f"""
+        # Export button — small, sits on header
+        self.export_btn = ElasticButton("Xuất")
+        self.export_btn.setFont(font_ui(8, QFont.Weight.DemiBold))
+        self.export_btn.setFixedHeight(26)
+        self.export_btn.setCursor(Qt.PointingHandCursor)
+        self.export_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {self.theme.accent};
                 color: {self.theme.accent_text};
@@ -788,12 +765,12 @@ class TranscriptPanel(QWidget):
                 opacity: 0.9;
             }}
         """)
-        self.right_sidebar_toggle_btn.clicked.connect(self._toggle_right_sidebar)
-        header_layout.addWidget(self.right_sidebar_toggle_btn)
+        self.export_btn.clicked.connect(self._open_right_sidebar_and_export)
+        header_layout.addWidget(self.export_btn)
 
         right_layout.addWidget(header)
 
-        # Scrollable Transcript Entries List
+        # ── Scrollable Transcript Entries List ──
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.NoFrame)
@@ -811,17 +788,15 @@ class TranscriptPanel(QWidget):
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
         """)
-
         self.entries_container = QWidget()
         self.entries_layout = QVBoxLayout(self.entries_container)
-        self.entries_layout.setContentsMargins(16, 16, 16, 16)
+        self.entries_layout.setContentsMargins(16, 14, 16, 14)
         self.entries_layout.setSpacing(4)
         self.entries_layout.setAlignment(Qt.AlignTop)
-
         self.scroll_area.setWidget(self.entries_container)
         right_layout.addWidget(self.scroll_area, 1)
 
-        # Floating "↓ Câu mới" Pill Button
+        # Floating "↓ Câu mới" Pill
         self.new_items_btn = ElasticButton("↓ Câu mới", self.right_wrapper)
         self.new_items_btn.setCursor(Qt.PointingHandCursor)
         self.new_items_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
@@ -839,79 +814,74 @@ class TranscriptPanel(QWidget):
 
         body_layout.addWidget(self.right_wrapper, 1)
 
-        # ── RIGHT Sidebar (Tóm tắt AI & Xuất Transcript) ──────────────
+        # ── RIGHT Sidebar (Tóm tắt AI & Xuất Transcript) ────────────
         self.right_sidebar = QFrame()
         self.right_sidebar.setMinimumWidth(0)
-        self.right_sidebar.setMaximumWidth(260)
+        self.right_sidebar.setMaximumWidth(0)  # Start collapsed
         self.right_sidebar.setStyleSheet(f"border-left: 1px solid {self.theme.border}; background: {self.theme.bg};")
-        self._right_sidebar_expanded = True
+        self._right_sidebar_expanded = False  # Start collapsed
         self._right_sidebar_anim = QPropertyAnimation(self.right_sidebar, b"maximumWidth", self)
         self._right_sidebar_anim.setDuration(220)
         self._right_sidebar_anim.setEasingCurve(QEasingCurve.OutCubic)
 
         right_sidebar_layout = QVBoxLayout(self.right_sidebar)
-        right_sidebar_layout.setContentsMargins(12, 12, 12, 12)
-        right_sidebar_layout.setSpacing(12)
+        right_sidebar_layout.setContentsMargins(14, 14, 14, 14)
+        right_sidebar_layout.setSpacing(10)
 
-        # Right Sidebar Top Header
+        # Right Sidebar Header
         rs_top = QHBoxLayout()
-        rs_title = QLabel("Tóm tắt & Xuất")
+        rs_title = QLabel("Công cụ")
         rs_title.setFont(font_ui(10, QFont.Weight.Bold))
         rs_title.setStyleSheet(f"color: {self.theme.text}; border: none;")
         rs_top.addWidget(rs_title, 1)
-
         close_rs_btn = QPushButton("✕")
-        close_rs_btn.setFixedSize(24, 24)
+        close_rs_btn.setFixedSize(22, 22)
         close_rs_btn.setCursor(Qt.PointingHandCursor)
         close_rs_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
                 color: {self.theme.dim};
                 border: none;
-                font-size: 13px;
-                font-weight: bold;
+                font-size: 12px;
             }}
-            QPushButton:hover {{
-                color: {self.theme.accent};
-            }}
+            QPushButton:hover {{ color: {self.theme.accent}; }}
         """)
         close_rs_btn.clicked.connect(self._toggle_right_sidebar)
         rs_top.addWidget(close_rs_btn)
         right_sidebar_layout.addLayout(rs_top)
 
-        # Divider line
+        # Thin separator
         div1 = QFrame()
         div1.setFixedHeight(1)
         div1.setStyleSheet(f"background: {self.theme.border};")
         right_sidebar_layout.addWidget(div1)
 
-        # ── Section 1: Tóm tắt AI ──────────────────────────────────
+        # ── Section 1: Tóm tắt AI ──
         sum_lbl = QLabel("TÓM TẮT AI")
-        sum_lbl.setFont(font_ui(8.5, QFont.Weight.Bold))
-        sum_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none;")
+        sum_lbl.setFont(font_ui(7.5, QFont.Weight.Bold))
+        sum_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none; letter-spacing: 1px;")
         right_sidebar_layout.addWidget(sum_lbl)
 
-        sum_desc = QLabel("Sử dụng Gemini AI để tóm tắt các điểm chính của phiên dịch.")
+        sum_desc = QLabel("Dùng Gemini AI tóm tắt phiên dịch.")
         sum_desc.setFont(font_ui(8))
         sum_desc.setStyleSheet(f"color: {self.theme.dim}; border: none;")
         sum_desc.setWordWrap(True)
         right_sidebar_layout.addWidget(sum_desc)
 
-        self.summarize_btn = ElasticButton("Tóm tắt AI")
+        self.summarize_btn = ElasticButton("✦  Tóm tắt AI")
         self.summarize_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
         self.summarize_btn.setFixedHeight(32)
         self.summarize_btn.setCursor(Qt.PointingHandCursor)
         self.summarize_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: {self.theme.raised};
-                color: {self.theme.text};
-                border: 1px solid {self.theme.border};
-                border-radius: 6px;
-                padding: 0 8px;
+                background-color: {self.theme.accent};
+                color: {self.theme.accent_text};
+                border: none;
+                border-radius: 7px;
+                padding: 0 10px;
             }}
             QPushButton:hover {{
-                border-color: {self.theme.accent};
-                color: {self.theme.accent};
+                opacity: 0.9;
             }}
         """)
         self.summarize_btn.clicked.connect(self._summarize_selected_sessions)
@@ -922,7 +892,6 @@ class TranscriptPanel(QWidget):
         sum_container_layout = QVBoxLayout(self.summary_container)
         sum_container_layout.setContentsMargins(0, 0, 0, 0)
         sum_container_layout.setSpacing(6)
-
         self.summary_text_area = QTextEdit()
         self.summary_text_area.setReadOnly(True)
         self.summary_text_area.setFont(font_ui(8.5))
@@ -937,10 +906,8 @@ class TranscriptPanel(QWidget):
             }}
         """)
         sum_container_layout.addWidget(self.summary_text_area)
-
         sum_action_btns = QHBoxLayout()
         sum_action_btns.setSpacing(4)
-
         self.copy_summary_btn = ElasticButton("Sao chép")
         self.copy_summary_btn.setFont(font_ui(8, QFont.Weight.DemiBold))
         self.copy_summary_btn.setFixedHeight(24)
@@ -951,6 +918,7 @@ class TranscriptPanel(QWidget):
                 color: {self.theme.text};
                 border: 1px solid {self.theme.border};
                 border-radius: 4px;
+                padding: 0 6px;
             }}
             QPushButton:hover {{
                 color: {self.theme.accent};
@@ -959,7 +927,6 @@ class TranscriptPanel(QWidget):
         """)
         self.copy_summary_btn.clicked.connect(self._copy_right_summary)
         sum_action_btns.addWidget(self.copy_summary_btn)
-
         self.save_summary_btn = ElasticButton("Lưu file")
         self.save_summary_btn.setFont(font_ui(8, QFont.Weight.DemiBold))
         self.save_summary_btn.setFixedHeight(24)
@@ -970,6 +937,7 @@ class TranscriptPanel(QWidget):
                 color: {self.theme.text};
                 border: 1px solid {self.theme.border};
                 border-radius: 4px;
+                padding: 0 6px;
             }}
             QPushButton:hover {{
                 color: {self.theme.accent};
@@ -979,20 +947,19 @@ class TranscriptPanel(QWidget):
         self.save_summary_btn.clicked.connect(self._save_right_summary)
         sum_action_btns.addWidget(self.save_summary_btn)
         sum_container_layout.addLayout(sum_action_btns)
-
         self.summary_container.hide()
         right_sidebar_layout.addWidget(self.summary_container)
 
-        # Divider line 2
+        # Separator
         div2 = QFrame()
         div2.setFixedHeight(1)
         div2.setStyleSheet(f"background: {self.theme.border};")
         right_sidebar_layout.addWidget(div2)
 
-        # ── Section 2: Xuất Transcript ──────────────────────────────
+        # ── Section 2: Xuất Transcript ──
         exp_lbl = QLabel("XUẤT TRANSCRIPT")
-        exp_lbl.setFont(font_ui(8.5, QFont.Weight.Bold))
-        exp_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none;")
+        exp_lbl.setFont(font_ui(7.5, QFont.Weight.Bold))
+        exp_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none; letter-spacing: 1px;")
         right_sidebar_layout.addWidget(exp_lbl)
 
         tags_layout = QHBoxLayout()
@@ -1010,30 +977,30 @@ class TranscriptPanel(QWidget):
         self.toggle_src = ToggleCheckBox("Bản gốc", self.theme)
         self.toggle_src.setChecked(True)
         opts_layout.addWidget(self.toggle_src)
-
         self.toggle_ts = ToggleCheckBox("Time", self.theme)
         self.toggle_ts.setChecked(True)
         opts_layout.addWidget(self.toggle_ts)
         right_sidebar_layout.addLayout(opts_layout)
 
-        self.export_btn = ElasticButton("Xuất file...")
-        self.export_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
-        self.export_btn.setFixedHeight(32)
-        self.export_btn.setCursor(Qt.PointingHandCursor)
-        self.export_btn.setStyleSheet(f"""
+        self.rs_export_btn = ElasticButton("Xuất file...")
+        self.rs_export_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
+        self.rs_export_btn.setFixedHeight(32)
+        self.rs_export_btn.setCursor(Qt.PointingHandCursor)
+        self.rs_export_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: {self.theme.accent};
-                color: {self.theme.accent_text};
-                border: none;
-                border-radius: 6px;
+                background-color: {self.theme.raised};
+                color: {self.theme.text};
+                border: 1px solid {self.theme.border};
+                border-radius: 7px;
                 padding: 0 12px;
             }}
             QPushButton:hover {{
-                opacity: 0.9;
+                border-color: {self.theme.accent};
+                color: {self.theme.accent};
             }}
         """)
-        self.export_btn.clicked.connect(self.export_transcript)
-        right_sidebar_layout.addWidget(self.export_btn)
+        self.rs_export_btn.clicked.connect(self.export_transcript)
+        right_sidebar_layout.addWidget(self.rs_export_btn)
 
         right_sidebar_layout.addStretch()
 
@@ -1334,13 +1301,11 @@ class TranscriptPanel(QWidget):
             self._sidebar_anim.setStartValue(self.sidebar.maximumWidth())
             self._sidebar_anim.setEndValue(0)
             self._sidebar_expanded = False
-            self.sidebar_toggle_btn.setText("◧ Sidebar")
         else:
             self.sidebar.show()
             self._sidebar_anim.setStartValue(self.sidebar.maximumWidth())
-            self._sidebar_anim.setEndValue(240)
+            self._sidebar_anim.setEndValue(220)
             self._sidebar_expanded = True
-            self.sidebar_toggle_btn.setText("◧ Sidebar")
         self._sidebar_anim.start()
 
     def _toggle_right_sidebar(self) -> None:
@@ -1349,14 +1314,19 @@ class TranscriptPanel(QWidget):
             self._right_sidebar_anim.setStartValue(self.right_sidebar.maximumWidth())
             self._right_sidebar_anim.setEndValue(0)
             self._right_sidebar_expanded = False
-            self.right_sidebar_toggle_btn.setText("Tóm tắt & Xuất ⚡")
         else:
             self.right_sidebar.show()
             self._right_sidebar_anim.setStartValue(self.right_sidebar.maximumWidth())
-            self._right_sidebar_anim.setEndValue(260)
+            self._right_sidebar_anim.setEndValue(250)
             self._right_sidebar_expanded = True
-            self.right_sidebar_toggle_btn.setText("Ẩn Sidebar")
         self._right_sidebar_anim.start()
+
+    def _open_right_sidebar_and_export(self) -> None:
+        """Opens the right sidebar if closed, then triggers export."""
+        if not self._right_sidebar_expanded:
+            self._toggle_right_sidebar()
+        else:
+            self.export_transcript()
 
     def _copy_right_summary(self) -> None:
         text = self.summary_text_area.toPlainText().strip()
