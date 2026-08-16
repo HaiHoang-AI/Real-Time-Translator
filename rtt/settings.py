@@ -43,6 +43,7 @@ class DisplaySettings:
     screen: str = "primary"         # primary | 1 | 2 | follow_mouse
     show_original: bool = True      # show source text above translation
     alignment: str = "center"       # left | center | right
+    overlay_width: int = 680        # px, subtitle overlay card length (400 - 1000)
 
 
 @dataclass

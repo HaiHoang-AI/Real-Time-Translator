@@ -316,11 +316,14 @@ class DisplayTab(QWidget):
         layout.addWidget(self.preview_box)
         
         # Sliders
-        # Sliders
         self.font_slider = SliderWidget("Cỡ chữ bản dịch", 12, 40, theme, unit="px")
         self.font_slider.valueChanged.connect(self._on_font_size)
         layout.addWidget(self.font_slider)
         
+        self.width_slider = SliderWidget("Độ dài thanh phụ đề", 400, 1000, theme, unit="px")
+        self.width_slider.valueChanged.connect(lambda v: self.settings.update(display={'overlay_width': v}))
+        layout.addWidget(self.width_slider)
+
         self.opacity_slider = SliderWidget("Độ mờ nền", 0, 100, theme, unit="%")
         self.opacity_slider.valueChanged.connect(self._on_opacity_change)
         layout.addWidget(self.opacity_slider)
@@ -518,6 +521,7 @@ class DisplayTab(QWidget):
     def _load_settings(self):
         d = self.settings.data
         self.font_slider.setValue(d.display.font_size)
+        self.width_slider.setValue(getattr(d.display, 'overlay_width', 680))
         self.opacity_slider.setValue(int(d.display.bg_opacity * 100))
         align_map = {"left": "Căn trái", "center": "Căn giữa", "right": "Căn phải"}
         self.align_seg.setValue(align_map.get(getattr(d.display, 'alignment', 'center'), "Căn giữa"))

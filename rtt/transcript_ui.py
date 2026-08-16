@@ -283,23 +283,30 @@ class ClaudeSessionItemWidget(QWidget):
         self._update_style()
 
     def _update_style(self) -> None:
+        is_dark = getattr(self.theme, 'is_dark', True) if hasattr(self.theme, 'is_dark') else True
         if self.is_active:
-            bg_style = f"background-color: {self.theme.raised};"
-            border_style = f"border: 1px solid {self.theme.border};"
+            active_bg = "#322D26" if is_dark else "#DDD6CB"
+            active_border = self.theme.border_strong if is_dark else "#B8AF9F"
+            self.setStyleSheet(f"""
+                ClaudeSessionItemWidget {{
+                    background-color: {active_bg};
+                    border: 1px solid {active_border};
+                    border-radius: 7px;
+                }}
+            """)
+            self.title_lbl.setStyleSheet(f"color: {self.theme.text}; font-weight: bold; background: transparent; border: none;")
         else:
-            bg_style = "background-color: transparent;"
-            border_style = "border: 1px solid transparent;"
-
-        self.setStyleSheet(f"""
-            ClaudeSessionItemWidget {{
-                {bg_style}
-                {border_style}
-                border-radius: 7px;
-            }}
-            ClaudeSessionItemWidget:hover {{
-                background-color: {self.theme.raised};
-            }}
-        """)
+            self.setStyleSheet(f"""
+                ClaudeSessionItemWidget {{
+                    background-color: transparent;
+                    border: 1px solid transparent;
+                    border-radius: 7px;
+                }}
+                ClaudeSessionItemWidget:hover {{
+                    background-color: {self.theme.raised};
+                }}
+            """)
+            self.title_lbl.setStyleSheet(f"color: {self.theme.dim}; font-weight: normal; background: transparent; border: none;")
 
     def set_checked(self, checked: bool) -> None:
         self.is_checked = checked

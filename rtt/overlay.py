@@ -60,6 +60,7 @@ class _DualSubtitleWidget(QWidget):
         show_original: bool = True,
         bg_opacity: float = 0.78,
         alignment: str = "center",
+        card_width: int = 680,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -68,6 +69,7 @@ class _DualSubtitleWidget(QWidget):
         self._show_original = show_original
         self._bg_opacity = bg_opacity
         self._alignment = alignment
+        self._card_width = card_width
 
         self._old_prev_text = ""
         self._prev_text = ""
@@ -82,6 +84,10 @@ class _DualSubtitleWidget(QWidget):
         self._anim.setEasingCurve(QEasingCurve.OutBack)
 
         self._recalc_height()
+
+    def set_card_width(self, width: int) -> None:
+        self._card_width = max(350, width)
+        self.update()
 
     @Property(float)
     def animProgress(self) -> float:
@@ -186,8 +192,11 @@ class _DualSubtitleWidget(QWidget):
         m_curr = QFontMetrics(font_curr)
         m_part = QFontMetrics(font_part)
 
-        # Max single line width: wide cinematic span across screen (max 1200px)
-        max_wrap_width = min(1200, max(650, int(self.width() * 0.90)))
+        pad_x = 24
+        pad_y = 14
+
+        target_card_w = min(self._card_width, self.width() - 48)
+        max_wrap_width = max(280, target_card_w - (pad_x * 2))
 
         prev_lines = self._wrap(m_prev, self._prev_text, max_wrap_width)[:3] if self._prev_text else []
         curr_lines = self._wrap(m_curr, self._curr_text, max_wrap_width)[:3] if self._curr_text else []
@@ -228,10 +237,7 @@ class _DualSubtitleWidget(QWidget):
             painter.end()
             return
 
-        pad_x = 22
-        pad_y = 12
-
-        card_w = max_line_w + (pad_x * 2)
+        card_w = max(target_card_w, min(self.width() - 48, max_line_w + (pad_x * 2)))
         total_text_h = (y_part + len(part_lines)*h_part if part_lines else y_curr + len(curr_lines)*h_curr) - (y_top - m_prev.ascent())
         card_h = total_text_h + (pad_y * 2)
 
@@ -391,6 +397,7 @@ class SubtitleOverlay(QWidget):
         show_orig = settings.data.display.show_original if settings else True
         bg_opac = settings.data.display.bg_opacity if settings else 0.78
         align = getattr(settings.data.display, 'alignment', 'center') if settings else 'center'
+        card_w_val = getattr(settings.data.display, 'overlay_width', 680) if settings else 680
 
         self.subtitle_widget = _DualSubtitleWidget(
             main_pt=main_pt,
@@ -398,6 +405,7 @@ class SubtitleOverlay(QWidget):
             show_original=show_orig,
             bg_opacity=bg_opac,
             alignment=align,
+            card_width=card_w_val,
             parent=self,
         )
 
@@ -418,7 +426,8 @@ class SubtitleOverlay(QWidget):
     def _apply_position(self, settings: Optional[AppSettings] = None) -> None:
         """Position the overlay on the correct screen at the correct location."""
         screen = QGuiApplication.primaryScreen().availableGeometry()
-        width = min(1360, max(800, int(screen.width() * 0.88)))
+        target_w = self.subtitle_widget._card_width + 80 if hasattr(self, "subtitle_widget") else 760
+        width = max(target_w, int(screen.width() * 0.75))
         height = self.subtitle_widget.height() + 20
         self.resize(width, height)
 
@@ -449,6 +458,7 @@ class SubtitleOverlay(QWidget):
         self.subtitle_widget.set_show_original(s.data.display.show_original)
         self.subtitle_widget.set_bg_opacity(s.data.display.bg_opacity)
         self.subtitle_widget.set_alignment(getattr(s.data.display, 'alignment', 'center'))
+        self.subtitle_widget.set_card_width(getattr(s.data.display, 'overlay_width', 680))
         self._apply_position(s)
 
     def _click_through(self, enabled: bool) -> None:
