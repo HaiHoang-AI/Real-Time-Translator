@@ -244,39 +244,42 @@ class MainWindow(QWidget):
 
         header_layout.addStretch(1)
 
-        # Window Controls: Minimize, Maximize/Restore, Close
-        _wc_style = lambda hover_alpha: f"""
+        # Window Controls: Minimize, Maximize/Restore, Close (Bigger & clear)
+        _wc_style = lambda fsize="16px", hover_alpha="0.22", hover_color="#E8A878": f"""
             QPushButton {{
                 background: transparent;
-                color: {self.theme.dim};
+                color: {self.theme.accent};
                 border: none;
-                border-radius: 5px;
-                font-size: 13px;
+                border-radius: 6px;
+                font-family: 'Segoe UI', 'Segoe UI Symbol', Arial, sans-serif;
+                font-size: {fsize};
+                font-weight: bold;
+                padding: 0;
             }}
             QPushButton:hover {{
                 background-color: rgba(196, 136, 90, {hover_alpha});
-                color: {self.theme.accent};
+                color: {hover_color};
             }}
         """
 
         btn_min = QPushButton("─")
-        btn_min.setFixedSize(32, 28)
+        btn_min.setFixedSize(36, 30)
         btn_min.setCursor(Qt.PointingHandCursor)
-        btn_min.setStyleSheet(_wc_style(0.18))
+        btn_min.setStyleSheet(_wc_style("18px", "0.22", "#E8A878"))
         btn_min.clicked.connect(self.showMinimized)
         header_layout.addWidget(btn_min)
 
         btn_max = QPushButton("□")
-        btn_max.setFixedSize(32, 28)
+        btn_max.setFixedSize(36, 30)
         btn_max.setCursor(Qt.PointingHandCursor)
-        btn_max.setStyleSheet(_wc_style(0.18))
+        btn_max.setStyleSheet(_wc_style("16px", "0.22", "#E8A878"))
         btn_max.clicked.connect(self._toggle_maximize)
         header_layout.addWidget(btn_max)
 
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(32, 28)
+        close_btn.setFixedSize(36, 30)
         close_btn.setCursor(Qt.PointingHandCursor)
-        close_btn.setStyleSheet(_wc_style(0.30))
+        close_btn.setStyleSheet(_wc_style("17px", "0.35", "#F0B88A"))
         close_btn.clicked.connect(self.close)
         header_layout.addWidget(close_btn)
 

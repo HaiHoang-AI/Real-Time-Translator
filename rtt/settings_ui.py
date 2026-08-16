@@ -1304,23 +1304,38 @@ class SettingsWindow(QWidget):
         ctrl_layout.setSpacing(6)
         ctrl_layout.addStretch(1)
 
-        _wc_qss = lambda ha: f"QPushButton {{ background: transparent; color: #A39C92; border: none; border-radius: 5px; font-size: 13px; }} QPushButton:hover {{ background-color: rgba(196, 136, 90, {ha}); color: #C4885A; }}"
+        _wc_qss = lambda fsize="16px", ha="0.22", hc="#E8A878": f"""
+            QPushButton {{
+                background: transparent;
+                color: #C4885A;
+                border: none;
+                border-radius: 6px;
+                font-family: 'Segoe UI', 'Segoe UI Symbol', Arial, sans-serif;
+                font-size: {fsize};
+                font-weight: bold;
+                padding: 0;
+            }}
+            QPushButton:hover {{
+                background-color: rgba(196, 136, 90, {ha});
+                color: {hc};
+            }}
+        """
 
         btn_min = QPushButton("─")
-        btn_min.setFixedSize(30, 26)
-        btn_min.setStyleSheet(_wc_qss(0.18))
+        btn_min.setFixedSize(36, 30)
+        btn_min.setStyleSheet(_wc_qss("18px", "0.22", "#E8A878"))
         btn_min.clicked.connect(self.showMinimized)
         ctrl_layout.addWidget(btn_min)
 
         btn_max = QPushButton("□")
-        btn_max.setFixedSize(30, 26)
-        btn_max.setStyleSheet(_wc_qss(0.18))
+        btn_max.setFixedSize(36, 30)
+        btn_max.setStyleSheet(_wc_qss("16px", "0.22", "#E8A878"))
         btn_max.clicked.connect(self._toggle_maximize)
         ctrl_layout.addWidget(btn_max)
 
         btn_close = QPushButton("✕")
-        btn_close.setFixedSize(30, 26)
-        btn_close.setStyleSheet(_wc_qss(0.30))
+        btn_close.setFixedSize(36, 30)
+        btn_close.setStyleSheet(_wc_qss("17px", "0.35", "#F0B88A"))
         btn_close.clicked.connect(self.close)
         ctrl_layout.addWidget(btn_close)
 
