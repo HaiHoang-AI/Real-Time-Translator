@@ -244,21 +244,22 @@ class MainWindow(QWidget):
 
         header_layout.addStretch(1)
 
-        # Window Controls: Minimize, Maximize/Restore, Close (Brown accent color)
+        # Window Controls: Minimize, Maximize/Restore, Close (Warm earth brown #C4885A)
         btn_min = ElasticButton("─")
         btn_min.setFixedSize(28, 28)
         btn_min.setCursor(Qt.PointingHandCursor)
-        btn_min.setStyleSheet(f"""
-            QPushButton {{
+        btn_min.setStyleSheet("""
+            QPushButton {
                 background: transparent;
-                color: {self.theme.accent};
+                color: #C4885A;
                 border: none;
                 border-radius: 14px;
                 font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: rgba(196, 136, 90, 0.18);
-            }}
+            }
+            QPushButton:hover {
+                background-color: rgba(196, 136, 90, 0.22);
+                color: #D99B6C;
+            }
         """)
         btn_min.clicked.connect(self.showMinimized)
         header_layout.addWidget(btn_min)
@@ -266,17 +267,18 @@ class MainWindow(QWidget):
         btn_max = ElasticButton("□")
         btn_max.setFixedSize(28, 28)
         btn_max.setCursor(Qt.PointingHandCursor)
-        btn_max.setStyleSheet(f"""
-            QPushButton {{
+        btn_max.setStyleSheet("""
+            QPushButton {
                 background: transparent;
-                color: {self.theme.accent};
+                color: #C4885A;
                 border: none;
                 border-radius: 14px;
                 font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: rgba(196, 136, 90, 0.18);
-            }}
+            }
+            QPushButton:hover {
+                background-color: rgba(196, 136, 90, 0.22);
+                color: #D99B6C;
+            }
         """)
         btn_max.clicked.connect(self._toggle_maximize)
         header_layout.addWidget(btn_max)
@@ -284,18 +286,19 @@ class MainWindow(QWidget):
         close_btn = ElasticButton("✕")
         close_btn.setFixedSize(28, 28)
         close_btn.setCursor(Qt.PointingHandCursor)
-        close_btn.setStyleSheet(f"""
-            QPushButton {{
+        close_btn.setStyleSheet("""
+            QPushButton {
                 background-color: transparent;
-                color: {self.theme.accent};
+                color: #C4885A;
                 border: none;
                 border-radius: 14px;
                 font-size: 13px;
                 font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: rgba(196, 136, 90, 0.25);
-            }}
+            }
+            QPushButton:hover {
+                background-color: rgba(196, 136, 90, 0.28);
+                color: #E8A878;
+            }
         """)
         close_btn.clicked.connect(self.close)
         header_layout.addWidget(close_btn)
