@@ -830,21 +830,30 @@ class TranscriptPanel(QWidget):
 
         # Right Sidebar Header
         rs_top = QHBoxLayout()
+        rs_top.setContentsMargins(0, 0, 0, 0)
         rs_title = QLabel("Công cụ")
         rs_title.setFont(font_ui(10, QFont.Weight.Bold))
         rs_title.setStyleSheet(f"color: {self.theme.text}; border: none;")
         rs_top.addWidget(rs_title, 1)
+
         close_rs_btn = QPushButton("✕")
-        close_rs_btn.setFixedSize(22, 22)
+        close_rs_btn.setFixedSize(26, 26)
         close_rs_btn.setCursor(Qt.PointingHandCursor)
+        close_rs_btn.setToolTip("Đóng thanh công cụ")
         close_rs_btn.setStyleSheet(f"""
             QPushButton {{
-                background: transparent;
-                color: {self.theme.dim};
-                border: none;
-                font-size: 12px;
+                background-color: {self.theme.raised};
+                color: {self.theme.text};
+                border: 1px solid {self.theme.border};
+                border-radius: 13px;
+                font-size: 13px;
+                font-weight: bold;
             }}
-            QPushButton:hover {{ color: {self.theme.accent}; }}
+            QPushButton:hover {{
+                background-color: {self.theme.accent};
+                color: {self.theme.accent_text};
+                border-color: {self.theme.accent};
+            }}
         """)
         close_rs_btn.clicked.connect(self._toggle_right_sidebar)
         rs_top.addWidget(close_rs_btn)
@@ -1322,11 +1331,8 @@ class TranscriptPanel(QWidget):
         self._right_sidebar_anim.start()
 
     def _open_right_sidebar_and_export(self) -> None:
-        """Opens the right sidebar if closed, then triggers export."""
-        if not self._right_sidebar_expanded:
-            self._toggle_right_sidebar()
-        else:
-            self.export_transcript()
+        """Toggles the right sidebar (Công cụ / Xuất) open and closed."""
+        self._toggle_right_sidebar()
 
     def _copy_right_summary(self) -> None:
         text = self.summary_text_area.toPlainText().strip()
