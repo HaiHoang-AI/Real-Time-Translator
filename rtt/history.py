@@ -313,7 +313,15 @@ class SessionManager(QObject):
         super().__init__(parent)
         self.src_lang = src_lang
         self.tgt_lang = tgt_lang
-        self.active_session: TranscriptSession = self.create_session()
+        self.active_session: Optional[TranscriptSession] = None
+
+        existing = self.list_sessions()
+        if existing:
+            by_date = sorted(existing, key=lambda x: x["start_dt"], reverse=True)
+            self.switch_to(by_date[0]["session_id"])
+
+        if not self.active_session:
+            self.create_session()
 
     def set_languages(self, src: str, tgt: str) -> None:
         self.src_lang = src
