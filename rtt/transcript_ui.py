@@ -1354,7 +1354,17 @@ class TranscriptPanel(QWidget):
         self.sessions_layout.addWidget(w)
 
     def _create_new_session(self) -> None:
-        self.session_mgr.create_session()
+        default_name = f"Phiên {datetime.now().strftime('%d/%m %H:%M')}"
+        name, ok = QInputDialog.getText(
+            self,
+            "Tạo phiên mới",
+            "Nhập tên cho phiên dịch mới:",
+            QLineEdit.Normal,
+            default_name,
+        )
+        if ok:
+            session_name = name.strip() if name.strip() else default_name
+            self.session_mgr.create_session(session_name)
 
     def _on_session_clicked(self, session_id: str) -> None:
         self.session_mgr.switch_to(session_id)
