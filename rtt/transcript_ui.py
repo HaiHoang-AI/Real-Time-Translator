@@ -202,6 +202,207 @@ class ToggleCheckBox(QCheckBox):
         """)
 
 
+# ────────────────────────────── Modern Sidebar Components ────────────
+
+class SidebarIconButton(QPushButton):
+    """Small sleek top header icon button for sidebar."""
+    def __init__(self, text: str, theme: ThemeColors, tooltip: str = "", parent=None):
+        super().__init__(parent)
+        self.theme = theme
+        self.icon_text = text
+        self.setFixedSize(26, 26)
+        self.setCursor(Qt.PointingHandCursor)
+        if tooltip:
+            self.setToolTip(tooltip)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        is_dark = (getattr(self.theme, 'name', '') == 'dark')
+
+        # Hover background
+        if self.underMouse():
+            bg_color = QColor("#302A24") if is_dark else QColor("#ECE6DB")
+            painter.setBrush(bg_color)
+            painter.setPen(Qt.NoPen)
+            painter.drawRoundedRect(self.rect(), 5, 5)
+
+        # Draw icon text
+        text_color = QColor(self.theme.accent) if self.underMouse() else (QColor("#F0EBE3") if is_dark else QColor("#201C17"))
+        painter.setPen(text_color)
+        font = QFont("Segoe UI Symbol", 12, QFont.Weight.Bold)
+        font.setFamilies(["Segoe UI Symbol", "Segoe UI Emoji", "Segoe UI", "Arial"])
+        painter.setFont(font)
+        painter.drawText(self.rect(), Qt.AlignCenter, self.icon_text)
+        painter.end()
+
+
+class SidebarActionItemWidget(QPushButton):
+    """Row item button for action menu items like + New, Projects, Artifacts, Customize."""
+    def __init__(self, icon_str: str, text_str: str, theme: ThemeColors, is_selected: bool = False, parent=None):
+        super().__init__(parent)
+        self.theme = theme
+        self.is_selected = is_selected
+        self.setText(f"{icon_str}  {text_str}")
+        self.setFont(font_ui(9, QFont.Weight.Medium))
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(30)
+        self._update_style()
+
+    def _update_style(self):
+        is_dark = (getattr(self.theme, 'name', '') == 'dark')
+        if self.is_selected:
+            bg = "#332D27" if is_dark else "#E2DDD3"
+            text_color = self.theme.text
+            font_w = "bold"
+        else:
+            bg = "transparent"
+            text_color = self.theme.text if is_dark else "#3D3830"
+            font_w = "normal"
+
+        hover_bg = "#302A24" if is_dark else "#ECE6DB"
+
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: {text_color};
+                border: none;
+                border-radius: 7px;
+                padding: 0 10px;
+                text-align: left;
+                font-weight: {font_w};
+            }}
+            QPushButton:hover {{
+                background-color: {hover_bg};
+            }}
+        """)
+
+
+class SidebarSectionHeaderWidget(QWidget):
+    """Header row for sections like 'Projects', 'Pinned', 'Chats' with action button on right."""
+    action_clicked = Signal()
+
+    def __init__(self, title: str, action_icon: str = "", theme: ThemeColors = DARK, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.theme = theme
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 8, 4, 4)
+        layout.setSpacing(4)
+
+        lbl = QLabel(title)
+        lbl.setFont(font_ui(8.5, QFont.Weight.Bold))
+        lbl.setStyleSheet(f"color: {self.theme.dim}; border: none;")
+        layout.addWidget(lbl, 1)
+
+        if action_icon:
+            btn = QPushButton(action_icon)
+            btn.setFixedSize(20, 20)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    color: {self.theme.dim};
+                    border: none;
+                    font-size: 13px;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    color: {self.theme.text};
+                }}
+            """)
+            btn.clicked.connect(self.action_clicked.emit)
+            layout.addWidget(btn)
+
+
+class ClaudeSubItemWidget(QWidget):
+    """Indented sub-item widget for nested list items."""
+    def __init__(self, text: str, theme: ThemeColors = DARK, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.theme = theme
+        self.setFixedHeight(26)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(20, 1, 4, 1)
+        layout.setSpacing(6)
+
+        bullet = QLabel("o")
+        bullet.setFont(font_ui(8))
+        bullet.setStyleSheet(f"color: {self.theme.dim}; background: transparent; border: none;")
+        layout.addWidget(bullet)
+
+        lbl = QLabel(text)
+        lbl.setFont(font_ui(8.5))
+        lbl.setStyleSheet(f"color: {self.theme.dim}; background: transparent; border: none;")
+        layout.addWidget(lbl, 1)
+
+        is_dark = getattr(self.theme, 'name', 'dark') == 'dark'
+        hover_bg = "#302A24" if is_dark else "#ECE6DB"
+        self.setStyleSheet(f"""
+            ClaudeSubItemWidget {{
+                background-color: transparent;
+                border-radius: 5px;
+            }}
+            ClaudeSubItemWidget:hover {{
+                background-color: {hover_bg};
+            }}
+        """)
+
+
+class SidebarFooterWidget(QWidget):
+    """Bottom footer bar showing user profile, avatar, and download icon."""
+    def __init__(self, username: str = "Hoàng-kun · Free", avatar_char: str = "H", theme: ThemeColors = DARK, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.theme = theme
+        self.setFixedHeight(44)
+        self.setup_ui(username, avatar_char)
+
+    def setup_ui(self, username: str, avatar_char: str):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(8)
+
+        # Avatar circle
+        avatar_lbl = QLabel(avatar_char)
+        avatar_lbl.setFixedSize(26, 26)
+        avatar_lbl.setAlignment(Qt.AlignCenter)
+        avatar_lbl.setFont(font_ui(9, QFont.Weight.Bold))
+        is_dark = getattr(self.theme, 'name', 'dark') == 'dark'
+        avatar_bg = "#332D27" if is_dark else "#E2DDD3"
+        avatar_fg = "#F0EBE3" if is_dark else "#201C17"
+        avatar_lbl.setStyleSheet(f"""
+            background-color: {avatar_bg};
+            color: {avatar_fg};
+            border-radius: 13px;
+            border: none;
+        """)
+        layout.addWidget(avatar_lbl)
+
+        # Username & Plan text
+        user_lbl = QLabel(f"{username} ˅")
+        user_lbl.setFont(font_ui(8.5, QFont.Weight.DemiBold))
+        user_lbl.setStyleSheet(f"color: {self.theme.text}; background: transparent; border: none;")
+        layout.addWidget(user_lbl, 1)
+
+        # Right download icon
+        dl_btn = QPushButton("⤓")
+        dl_btn.setFixedSize(22, 22)
+        dl_btn.setCursor(Qt.PointingHandCursor)
+        dl_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {self.theme.dim};
+                border: none;
+                font-size: 13px;
+            }}
+            QPushButton:hover {{
+                color: {self.theme.text};
+            }}
+        """)
+        layout.addWidget(dl_btn)
+
+
 # ────────────────────────────── Claude Minimal Session Item ────────────
 
 class ClaudeSessionItemWidget(QWidget):
@@ -221,32 +422,32 @@ class ClaudeSessionItemWidget(QWidget):
         parent=None,
     ) -> None:
         super().__init__(parent)
+        self.setAttribute(Qt.WA_StyledBackground, True)
         self.info = session_info
         self.session_id = session_info["session_id"]
         self.is_active = is_active
         self.theme = theme
         self.is_checked = False
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(34)
+        self.setFixedHeight(30)
         self.setup_ui()
 
     def setup_ui(self) -> None:
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(8)
+        layout.setContentsMargins(6, 2, 6, 2)
+        layout.setSpacing(6)
 
         # Bullet / Selection toggle button (○ in Claude style)
-        self.bullet_btn = QPushButton("○")
-        self.bullet_btn.setFixedSize(18, 18)
+        self.bullet_btn = QPushButton("o")
+        self.bullet_btn.setFixedSize(16, 16)
         self.bullet_btn.setCursor(Qt.PointingHandCursor)
         self.bullet_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
                 color: {self.theme.dim};
                 border: none;
-                font-size: 13px;
+                font-size: 11px;
                 font-weight: bold;
-                padding-bottom: 2px;
             }}
             QPushButton:hover {{
                 color: {self.theme.accent};
@@ -259,7 +460,7 @@ class ClaudeSessionItemWidget(QWidget):
         title_text = self.info.get("title", f"Phiên {self.session_id}")
         self.title_lbl = QLabel(title_text)
         weight = QFont.Weight.DemiBold if self.is_active else QFont.Weight.Normal
-        self.title_lbl.setFont(font_ui(9.5, weight))
+        self.title_lbl.setFont(font_ui(9, weight))
         title_color = self.theme.text if self.is_active else self.theme.dim
         self.title_lbl.setStyleSheet(f"color: {title_color}; background: transparent; border: none;")
         layout.addWidget(self.title_lbl, 1)
@@ -283,27 +484,28 @@ class ClaudeSessionItemWidget(QWidget):
         self._update_style()
 
     def _update_style(self) -> None:
-        is_dark = getattr(self.theme, 'is_dark', True) if hasattr(self.theme, 'is_dark') else True
+        is_dark = (getattr(self.theme, 'name', '') == 'dark')
         if self.is_active:
-            active_bg = "#322D26" if is_dark else "#DDD6CB"
-            active_border = self.theme.border_strong if is_dark else "#B8AF9F"
+            active_bg = "#332D27" if is_dark else "#E2DDD3"
+            active_border = "rgba(255,255,255,0.08)" if is_dark else "rgba(0,0,0,0.08)"
             self.setStyleSheet(f"""
                 ClaudeSessionItemWidget {{
                     background-color: {active_bg};
                     border: 1px solid {active_border};
-                    border-radius: 7px;
+                    border-radius: 6px;
                 }}
             """)
             self.title_lbl.setStyleSheet(f"color: {self.theme.text}; font-weight: bold; background: transparent; border: none;")
         else:
+            hover_bg = "#302A24" if is_dark else "#ECE6DB"
             self.setStyleSheet(f"""
                 ClaudeSessionItemWidget {{
                     background-color: transparent;
                     border: 1px solid transparent;
-                    border-radius: 7px;
+                    border-radius: 6px;
                 }}
                 ClaudeSessionItemWidget:hover {{
-                    background-color: {self.theme.raised};
+                    background-color: {hover_bg};
                 }}
             """)
             self.title_lbl.setStyleSheet(f"color: {self.theme.dim}; font-weight: normal; background: transparent; border: none;")
@@ -314,8 +516,8 @@ class ClaudeSessionItemWidget(QWidget):
             self.bullet_btn.setText("●")
             self.bullet_btn.setStyleSheet(f"color: {self.theme.accent}; background: transparent; border: none; font-size: 11px;")
         else:
-            self.bullet_btn.setText("○")
-            self.bullet_btn.setStyleSheet(f"color: {self.theme.dim}; background: transparent; border: none; font-size: 13px;")
+            self.bullet_btn.setText("o")
+            self.bullet_btn.setStyleSheet(f"color: {self.theme.dim}; background: transparent; border: none; font-size: 11px;")
 
     def _toggle_check(self) -> None:
         self.set_checked(not self.is_checked)
@@ -608,48 +810,53 @@ class TranscriptPanel(QWidget):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # ── LEFT Sidebar (Collapsible, width: 220px) ─────────────────
+        # ── LEFT Sidebar (Collapsible, width: 240px) ─────────────────
         self.sidebar = QFrame()
         self.sidebar.setMinimumWidth(0)
-        self.sidebar.setMaximumWidth(220)
-        self.sidebar.setStyleSheet(f"border-right: 1px solid {self.theme.border}; background: {self.theme.bg};")
+        self.sidebar.setMaximumWidth(240)
+        self.sidebar.setStyleSheet(f"""
+            QFrame {{
+                border-right: 1px solid {self.theme.border};
+                background-color: {self.theme.bg};
+            }}
+        """)
         self._sidebar_expanded = True
         self._sidebar_anim = QPropertyAnimation(self.sidebar, b"maximumWidth", self)
         self._sidebar_anim.setDuration(220)
         self._sidebar_anim.setEasingCurve(QEasingCurve.OutCubic)
 
         sidebar_layout = QVBoxLayout(self.sidebar)
-        sidebar_layout.setContentsMargins(10, 10, 10, 10)
-        sidebar_layout.setSpacing(8)
+        sidebar_layout.setContentsMargins(8, 8, 8, 8)
+        # 1. Top Icon Action Bar (≡, 🔍)
+        top_bar = QHBoxLayout()
+        top_bar.setContentsMargins(2, 0, 2, 4)
+        top_bar.setSpacing(2)
 
-        # "+  Phiên mới" Button — full width, clean
-        self.new_session_btn = ElasticButton("+  Phiên mới")
-        self.new_session_btn.setFont(font_ui(9, QFont.Weight.DemiBold))
-        self.new_session_btn.setFixedHeight(34)
-        self.new_session_btn.setCursor(Qt.PointingHandCursor)
-        self.new_session_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {self.theme.raised};
-                color: {self.theme.text};
-                border: 1px solid {self.theme.border};
-                border-radius: 8px;
-                padding: 0 12px;
-            }}
-            QPushButton:hover {{
-                border-color: {self.theme.accent};
-                color: {self.theme.accent};
-            }}
-        """)
-        self.new_session_btn.clicked.connect(self._create_new_session)
-        sidebar_layout.addWidget(self.new_session_btn)
+        self.sidebar_toggle_btn = SidebarIconButton("\u2261", self.theme, "Thu gọn / Mở rộng thanh bên")
+        self.sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
+        top_bar.addWidget(self.sidebar_toggle_btn)
 
-        # Section label
-        hist_lbl = QLabel("Chats")
-        hist_lbl.setFont(font_ui(8, QFont.Weight.Bold))
-        hist_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none; padding: 4px 2px 0 2px;")
-        sidebar_layout.addWidget(hist_lbl)
+        self.search_toggle_btn = SidebarIconButton("\U0001F50D", self.theme, "Tìm kiếm phiên")
+        self.search_toggle_btn.clicked.connect(self._toggle_search_box)
+        top_bar.addWidget(self.search_toggle_btn)
 
-        # Cross-session search
+        top_bar.addStretch()
+
+        sidebar_layout.addLayout(top_bar)
+
+        # 2. Action Items (+ New, Artifacts, Customize)
+        self.action_new_btn = SidebarActionItemWidget("+", "New", self.theme)
+        self.action_new_btn.clicked.connect(self._create_new_session)
+        sidebar_layout.addWidget(self.action_new_btn)
+
+        self.action_artifacts_btn = SidebarActionItemWidget("🔮", "Tóm tắt phiên", self.theme)
+        self.action_artifacts_btn.clicked.connect(self._open_right_sidebar_and_export)
+        sidebar_layout.addWidget(self.action_artifacts_btn)
+
+        self.action_customize_btn = SidebarActionItemWidget("🎛️", "Customize", self.theme)
+        sidebar_layout.addWidget(self.action_customize_btn)
+
+        # Collapsible Cross-session search box
         self.cross_search_input = QLineEdit()
         self.cross_search_input.setPlaceholderText("Tìm kiếm phiên...")
         self.cross_search_input.setFont(font_ui(8.5))
@@ -664,20 +871,42 @@ class TranscriptPanel(QWidget):
             }}
         """)
         self.cross_search_input.textChanged.connect(self._on_cross_search_changed)
+        self.cross_search_input.hide()
         sidebar_layout.addWidget(self.cross_search_input)
 
-        # Scrollable session list
+        # 4. Scrollable Container for Projects, Pinned, Chats
         self.sessions_scroll = QScrollArea()
         self.sessions_scroll.setWidgetResizable(True)
         self.sessions_scroll.setFrameShape(QFrame.NoFrame)
-        self.sessions_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.sessions_scroll.setStyleSheet(f"""
+            QScrollArea {{
+                border: none;
+                background: transparent;
+            }}
+            QScrollBar:vertical {{
+                background: transparent;
+                width: 5px;
+                margin: 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {self.theme.border_strong};
+                border-radius: 3px;
+                min-height: 20px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
+        """)
         self.sessions_container = QWidget()
+        self.sessions_container.setStyleSheet("background: transparent;")
         self.sessions_layout = QVBoxLayout(self.sessions_container)
-        self.sessions_layout.setContentsMargins(0, 2, 0, 2)
+        self.sessions_layout.setContentsMargins(0, 4, 0, 4)
         self.sessions_layout.setSpacing(2)
         self.sessions_layout.setAlignment(Qt.AlignTop)
         self.sessions_scroll.setWidget(self.sessions_container)
         sidebar_layout.addWidget(self.sessions_scroll, 1)
+
+        # 5. User Profile Footer Bar
+        self.sidebar_footer = SidebarFooterWidget("Hoàng-kun · Free", "H", self.theme)
+        sidebar_layout.addWidget(self.sidebar_footer)
 
         body_layout.addWidget(self.sidebar)
 
@@ -694,6 +923,11 @@ class TranscriptPanel(QWidget):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(12, 0, 12, 0)
         header_layout.setSpacing(8)
+
+        # Persistent Sidebar Toggle button (accessible even when left sidebar is collapsed to 0 width)
+        self.center_sidebar_toggle_btn = SidebarIconButton("\u2261", self.theme, "Mở / Thu gọn thanh bên")
+        self.center_sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
+        header_layout.addWidget(self.center_sidebar_toggle_btn)
 
         # Active Session Title
         self.header_title_lbl = QLabel(self.session.display_title if self.session else "Phiên hiện tại")
@@ -1070,12 +1304,14 @@ class TranscriptPanel(QWidget):
             item = self.sessions_layout.takeAt(0)
             w = item.widget()
             if w:
+                w.setParent(None)
                 w.deleteLater()
 
         query = self.cross_search_input.text().strip() if hasattr(self, "cross_search_input") else ""
         sessions = self.session_mgr.list_sessions(query)
 
         active_sid = self.session.session_id if self.session else ""
+
 
         if not sessions:
             lbl = QLabel("Không tìm thấy phiên")
@@ -1084,25 +1320,23 @@ class TranscriptPanel(QWidget):
             self.sessions_layout.addWidget(lbl)
             return
 
-        # Separate into Pinned and Chats lists like Claude.ai
+        # Separate into Pinned and Chats lists matching target UI
         pinned_sessions = [s for s in sessions if s.get("is_pinned")]
         chats_sessions = [s for s in sessions if not s.get("is_pinned")]
 
-        if pinned_sessions:
-            pinned_header = QLabel("Pinned")
-            pinned_header.setFont(font_ui(8.5, QFont.Weight.DemiBold))
-            pinned_header.setStyleSheet(f"color: {self.theme.dim}; padding: 6px 4px 2px 4px; border: none;")
-            self.sessions_layout.addWidget(pinned_header)
+        # 2. Pinned Section
+        pinned_header = SidebarSectionHeaderWidget("Pinned", action_icon="", theme=self.theme)
+        self.sessions_layout.addWidget(pinned_header)
 
+        if pinned_sessions:
             for s in pinned_sessions:
                 self._add_claude_session_item(s, active_sid)
 
-        if chats_sessions:
-            chats_header = QLabel("Chats")
-            chats_header.setFont(font_ui(8.5, QFont.Weight.DemiBold))
-            chats_header.setStyleSheet(f"color: {self.theme.dim}; padding: 10px 4px 2px 4px; border: none;")
-            self.sessions_layout.addWidget(chats_header)
+        # 3. Chats Section
+        chats_header = SidebarSectionHeaderWidget("Chats", action_icon="🎛️", theme=self.theme)
+        self.sessions_layout.addWidget(chats_header)
 
+        if chats_sessions:
             for s in chats_sessions:
                 self._add_claude_session_item(s, active_sid)
 
@@ -1306,16 +1540,24 @@ class TranscriptPanel(QWidget):
 
     def _toggle_sidebar(self) -> None:
         self._sidebar_anim.stop()
-        if self._sidebar_expanded:
-            self._sidebar_anim.setStartValue(self.sidebar.maximumWidth())
+        curr_width = self.sidebar.maximumWidth()
+        if self._sidebar_expanded or curr_width > 0:
+            self._sidebar_anim.setStartValue(curr_width)
             self._sidebar_anim.setEndValue(0)
             self._sidebar_expanded = False
         else:
             self.sidebar.show()
-            self._sidebar_anim.setStartValue(self.sidebar.maximumWidth())
-            self._sidebar_anim.setEndValue(220)
+            self._sidebar_anim.setStartValue(curr_width)
+            self._sidebar_anim.setEndValue(240)
             self._sidebar_expanded = True
         self._sidebar_anim.start()
+
+    def _toggle_search_box(self) -> None:
+        if self.cross_search_input.isVisible():
+            self.cross_search_input.hide()
+        else:
+            self.cross_search_input.show()
+            self.cross_search_input.setFocus()
 
     def _toggle_right_sidebar(self) -> None:
         self._right_sidebar_anim.stop()
