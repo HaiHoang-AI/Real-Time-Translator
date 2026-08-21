@@ -273,7 +273,7 @@ class GeminiTranslator:
             if self.fallback:
                 return self.fallback.translate(
                     text, src, tgt, beam=beam, glossary=glossary,
-                    auto_lock_caps=auto_lock_caps, auto_lock_camel=auto_camel
+                    auto_lock_caps=auto_lock_caps, auto_lock_camel=auto_lock_camel
                 )
             return text
 
@@ -285,14 +285,22 @@ class GeminiTranslator:
         except Exception as exc:
             if os.environ.get("RTT_DEBUG") == "1":
                 print(f"[gemini_mt] warning: {exc}, using fallback")
-            if self.fallback:
-                out = self.fallback.translate(
-                    text, src, tgt, beam=beam, glossary=glossary,
-                    auto_lock_caps=auto_lock_caps, auto_lock_camel=auto_camel
-                )
-                self.context.add(text, out)
-                return out
 
+        # Fallback to local NLLB on any API error or empty response
+        if self.fallback:
+            out = self.fallback.translate(
+                text, src, tgt, beam=beam, glossary=glossary,
+                auto_lock_caps=auto_lock_caps, auto_lock_camel=auto_lock_camel
+            )
+            self.context.add(text, out)
+            return out
+
+        return text
+
+    def _nllb_translate(self, text: str, src: str, tgt: str, beam: int = 1) -> str:
+        """Forward raw translation to fallback NLLB when in speed mode or raw mode."""
+        if self.fallback:
+            return self.fallback._nllb_translate(text, src, tgt, beam=beam)
         return text
 
     def _call_gemini(self, text: str, src: str, tgt: str, glossary: list[dict] | None = None) -> str:
@@ -318,13 +326,16 @@ class GeminiTranslator:
             f"3. CHỈ XUẤT DUY NHẤT BẢN DỊCH, không kèm dấu ngoặc kép, không giải thích hay chú thích thừa."
         )
 
-        user_content = f"{context_section}{glossary_section}\nCâu cần dịch: {text}"
+        user_content = f"{system_instruction}\n\n{context_section}{glossary_section}\nCâu cần dịch: {text}"
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        candidates = [
+            ("v1beta", self.model),
+            ("v1beta", "gemini-1.5-flash"),
+            ("v1beta", "gemini-2.0-flash"),
+            ("v1", "gemini-1.5-flash"),
+        ]
+
         payload = {
-            "system_instruction": {
-                "parts": [{"text": system_instruction}]
-            },
             "contents": [
                 {
                     "parts": [{"text": user_content}]
@@ -336,22 +347,32 @@ class GeminiTranslator:
             }
         }
         data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=3.5) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-            candidates = body.get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                if parts:
-                    res = parts[0].get("text", "").strip()
-                    if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')):
-                        res = res[1:-1].strip()
-                    return res
+
+        for api_ver, m_name in candidates:
+            if not m_name:
+                continue
+            clean_m = m_name.replace("models/", "")
+            url = f"https://generativelanguage.googleapis.com/{api_ver}/models/{clean_m}:generateContent?key={self.api_key}"
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=3.5) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+                    cand_list = body.get("candidates", [])
+                    if cand_list:
+                        parts = cand_list[0].get("content", {}).get("parts", [])
+                        if parts:
+                            res = parts[0].get("text", "").strip()
+                            if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')):
+                                res = res[1:-1].strip()
+                            if res:
+                                return res
+            except Exception:
+                continue
         return ""
 
 
