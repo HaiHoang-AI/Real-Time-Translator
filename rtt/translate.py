@@ -330,9 +330,9 @@ class GeminiTranslator:
 
         candidates = [
             ("v1beta", self.model),
+            ("v1beta", "gemini-2.5-flash-lite"),
             ("v1beta", "gemini-2.5-flash"),
             ("v1beta", "gemini-flash-latest"),
-            ("v1beta", "gemini-2.5-flash-lite"),
             ("v1beta", "gemini-3.7-flash"),
             ("v1beta", "gemini-2.0-flash"),
             ("v1beta", "gemini-1.5-flash"),
@@ -346,37 +346,57 @@ class GeminiTranslator:
                 }
             ],
             "generationConfig": {
-                "temperature": 0.2,
-                "maxOutputTokens": 256,
+                "temperature": 0.1,
+                "maxOutputTokens": 1024,
+                "thinkingConfig": {
+                    "thinkingBudget": 0
+                }
             }
         }
         data = json.dumps(payload).encode("utf-8")
+
+        # Payload fallback without thinkingConfig for older versions
+        payload_plain = {
+            "contents": [
+                {
+                    "parts": [{"text": user_content}]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 1024,
+            }
+        }
+        data_plain = json.dumps(payload_plain).encode("utf-8")
 
         for api_ver, m_name in candidates:
             if not m_name:
                 continue
             clean_m = m_name.replace("models/", "")
             url = f"https://generativelanguage.googleapis.com/{api_ver}/models/{clean_m}:generateContent?key={self.api_key}"
-            req = urllib.request.Request(
-                url,
-                data=data,
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=3.5) as resp:
-                    body = json.loads(resp.read().decode("utf-8"))
-                    cand_list = body.get("candidates", [])
-                    if cand_list:
-                        parts = cand_list[0].get("content", {}).get("parts", [])
-                        if parts:
-                            res = parts[0].get("text", "").strip()
-                            if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')):
-                                res = res[1:-1].strip()
-                            if res:
-                                return res
-            except Exception:
-                continue
+            
+            for post_data in (data, data_plain):
+                req = urllib.request.Request(
+                    url,
+                    data=post_data,
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=3.5) as resp:
+                        body = json.loads(resp.read().decode("utf-8"))
+                        cand_list = body.get("candidates", [])
+                        if cand_list:
+                            parts = cand_list[0].get("content", {}).get("parts", [])
+                            if parts:
+                                res = parts[0].get("text", "").strip()
+                                if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')):
+                                    res = res[1:-1].strip()
+                                if res:
+                                    return res
+                    break
+                except Exception:
+                    continue
         return ""
 
 
