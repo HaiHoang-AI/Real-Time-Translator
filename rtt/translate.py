@@ -19,9 +19,12 @@ specialised vocabulary.
 
 from __future__ import annotations
 
+import json
 import os
 import time
-from typing import Protocol
+import urllib.error
+import urllib.request
+from typing import Optional, Protocol
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
@@ -47,6 +50,54 @@ LANG_TO_NLLB = {
     "ar": "arb_Arab",
     "hi": "hin_Deva",
 }
+
+LANG_NAMES = {
+    "en": "tiếng Anh (English)",
+    "vi": "tiếng Việt (Vietnamese)",
+    "ja": "tiếng Nhật (Japanese)",
+    "ko": "tiếng Hàn (Korean)",
+    "zh": "tiếng Trung (Chinese)",
+    "fr": "tiếng Pháp (French)",
+    "es": "tiếng Tây Ban Nha (Spanish)",
+    "de": "tiếng Đức (German)",
+    "ru": "tiếng Nga (Russian)",
+    "th": "tiếng Thái (Thai)",
+    "id": "tiếng Indonesia (Indonesian)",
+    "pt": "tiếng Bồ Đào Nha (Portuguese)",
+    "it": "tiếng Ý (Italian)",
+    "ar": "tiếng Ả Rập (Arabic)",
+    "hi": "tiếng Hindi (Hindi)",
+}
+
+
+class ContextMemory:
+    """Rolling memory of recent source-target sentence pairs for discourse context."""
+
+    def __init__(self, max_items: int = 5) -> None:
+        self.max_items = max_items
+        self._history: list[tuple[str, str]] = []
+
+    def add(self, src: str, tgt: str) -> None:
+        src = src.strip()
+        tgt = tgt.strip()
+        if not src:
+            return
+        self._history.append((src, tgt))
+        if len(self._history) > self.max_items:
+            self._history = self._history[-self.max_items:]
+
+    def get_context_text(self, max_pairs: int = 3) -> str:
+        """Format recent context pairs as reference dialogue."""
+        pairs = self._history[-max_pairs:]
+        if not pairs:
+            return ""
+        lines = []
+        for s, t in pairs:
+            lines.append(f"- Gốc: \"{s}\" -> Dịch: \"{t}\"")
+        return "\n".join(lines)
+
+    def clear(self) -> None:
+        self._history.clear()
 
 
 class Translator(Protocol):
@@ -181,6 +232,127 @@ class NllbTranslator:
         if target and target[0] == tgt_nllb:
             target = target[1:]
         return tok.decode(tok.convert_tokens_to_ids(target), skip_special_tokens=True)
+
+
+class GeminiTranslator:
+    """Real-time Context-Aware Translation using Google Gemini API.
+
+    Uses sliding context memory of preceding sentences to ensure coherent,
+    domain-accurate translation with natural pronouns and flow.
+    Falls back gracefully to NLLB if offline or on network error.
+    """
+
+    def __init__(
+        self,
+        api_key: str = "",
+        model: str = "gemini-2.0-flash",
+        fallback_translator: Optional[NllbTranslator] = None,
+        context_memory: Optional[ContextMemory] = None,
+    ) -> None:
+        self.api_key = (api_key or os.environ.get("GEMINI_API_KEY", "")).strip()
+        self.model = model or "gemini-2.0-flash"
+        self.fallback = fallback_translator
+        self.context = context_memory or ContextMemory()
+        self.device = "cloud/api"
+
+    def translate(
+        self,
+        text: str,
+        src: str,
+        tgt: str,
+        beam: int = 1,
+        glossary: list[dict] | None = None,
+        auto_lock_caps: bool = True,
+        auto_lock_camel: bool = True,
+    ) -> str:
+        text = text.strip()
+        if not text or src == tgt:
+            return text
+
+        if not self.api_key:
+            if self.fallback:
+                return self.fallback.translate(
+                    text, src, tgt, beam=beam, glossary=glossary,
+                    auto_lock_caps=auto_lock_caps, auto_lock_camel=auto_camel
+                )
+            return text
+
+        try:
+            translated = self._call_gemini(text, src, tgt, glossary=glossary)
+            if translated:
+                self.context.add(text, translated)
+                return translated
+        except Exception as exc:
+            if os.environ.get("RTT_DEBUG") == "1":
+                print(f"[gemini_mt] warning: {exc}, using fallback")
+            if self.fallback:
+                out = self.fallback.translate(
+                    text, src, tgt, beam=beam, glossary=glossary,
+                    auto_lock_caps=auto_lock_caps, auto_lock_camel=auto_camel
+                )
+                self.context.add(text, out)
+                return out
+
+        return text
+
+    def _call_gemini(self, text: str, src: str, tgt: str, glossary: list[dict] | None = None) -> str:
+        src_name = LANG_NAMES.get(src, src)
+        tgt_name = LANG_NAMES.get(tgt, tgt)
+
+        context_str = self.context.get_context_text(max_pairs=3)
+        context_section = ""
+        if context_str:
+            context_section = f"\n[Ngữ cảnh các câu gần nhất]:\n{context_str}\n"
+
+        glossary_section = ""
+        if glossary:
+            terms = [f"- {e.get('source', '')} -> {e.get('target', '')}" for e in glossary if e.get('source')]
+            if terms:
+                glossary_section = f"\n[Thuật ngữ ưu tiên]:\n" + "\n".join(terms[:10]) + "\n"
+
+        system_instruction = (
+            f"Bạn là thông dịch viên cabin thời gian thực xuất sắc từ {src_name} sang {tgt_name}.\n"
+            f"Nguyên tắc phiên dịch:\n"
+            f"1. Dịch chuẩn xác, tự nhiên, văn phong nói/thuyết trình trôi chảy.\n"
+            f"2. Bám sát ngữ cảnh các câu trước để xưng hô chuẩn xác (tôi/bạn/chúng ta...) và giữ tính liền mạch.\n"
+            f"3. CHỈ XUẤT DUY NHẤT BẢN DỊCH, không kèm dấu ngoặc kép, không giải thích hay chú thích thừa."
+        )
+
+        user_content = f"{context_section}{glossary_section}\nCâu cần dịch: {text}"
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent?key={self.api_key}"
+        payload = {
+            "system_instruction": {
+                "parts": [{"text": system_instruction}]
+            },
+            "contents": [
+                {
+                    "parts": [{"text": user_content}]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 256,
+            }
+        }
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=3.5) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+            candidates = body.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if parts:
+                    res = parts[0].get("text", "").strip()
+                    if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')):
+                        res = res[1:-1].strip()
+                    return res
+        return ""
 
 
 # --------------------------------------------------------------------- demo
