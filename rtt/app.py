@@ -291,9 +291,15 @@ class Pipeline:
             cap.close()
 
     def _mt_loop(self) -> None:
-        from rtt.translate import NLLB_1B3_REPO, NLLB_REPO, NllbTranslator
+        from rtt.translate import (
+            ContextMemory,
+            GeminiTranslator,
+            NLLB_1B3_REPO,
+            NLLB_REPO,
+            NllbTranslator,
+        )
 
-        mt_engine = self.settings.data.model.mt_engine if self.settings else "nllb-1.3b"
+        mt_engine = self.settings.data.model.mt_engine if self.settings else "gemini-flash"
         # ⚡ Speed mode: always use 600M (smaller, faster)
         if self._speed_mode:
             repo = NLLB_REPO
@@ -302,7 +308,18 @@ class Pipeline:
 
         self.bridge.status_changed.emit("Đang tải mô hình dịch…")
         try:
-            self.translator = NllbTranslator(model_repo=repo)
+            if not self._speed_mode and mt_engine in ("gemini-flash", "llm-hybrid"):
+                api_key = self.settings.data.summary.api_key if self.settings else ""
+                model = self.settings.data.summary.model if self.settings else "gemini-2.0-flash"
+                fallback = NllbTranslator(model_repo=NLLB_REPO)
+                self.translator = GeminiTranslator(
+                    api_key=api_key,
+                    model=model,
+                    fallback_translator=fallback,
+                    context_memory=ContextMemory(max_items=5),
+                )
+            else:
+                self.translator = NllbTranslator(model_repo=repo)
         except Exception as exc:  # noqa: BLE001
             print(f"[mt] FAILED to load translator, passing text through: {exc}")
             self.translator = None

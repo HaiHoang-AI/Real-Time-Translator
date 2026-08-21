@@ -729,9 +729,9 @@ class ModelTab(QWidget):
         self.mt_frames = {}
 
         mt_options = [
-            ("nllb-1.3b", "NLLB-200 1.3B", "ĐỀ XUẤT (+1.5s)", "Chất lượng cao, từ chuyên ngành tốt"),
-            ("nllb", "NLLB-200 600M", "Nhanh (+0.8s)", "Nhẹ, tiết kiệm VRAM"),
-            ("llm-hybrid", "LLM Hybrid", "Ollama (+3.5s)", "Qwen2.5 / Gemma (Phase 2)"),
+            ("gemini-flash", "Gemini 2.0 Flash", "ĐỀ XUẤT (Ngữ cảnh AI)", "Dịch siêu mượt, hiểu ngữ cảnh video"),
+            ("nllb-1.3b", "NLLB-200 1.3B", "Offline (+1.5s)", "Chất lượng cao, không cần mạng"),
+            ("nllb", "NLLB-200 600M", "Offline Nhanh (+0.8s)", "Nhẹ, tiết kiệm VRAM"),
         ]
 
         for key, name, sub_text, desc in mt_options:
@@ -840,7 +840,7 @@ class ModelTab(QWidget):
 
         # Update MT frames UI
         for key, frame in self.mt_frames.items():
-            is_active = (key == curr_mt) or (key == "nllb-1.3b" and curr_mt == "auto")
+            is_active = (key == curr_mt) or (key == "gemini-flash" and curr_mt in ("auto", "llm-hybrid"))
             if is_active:
                 frame.setStyleSheet(
                     f"background-color: {self.theme.raised}; border-radius: 10px; "
@@ -864,10 +864,16 @@ class ModelTab(QWidget):
             )
         else:
             stt_time = 0.40 if curr_stt in ("large-v3-turbo", "auto") else (0.20 if curr_stt == "small" else 1.20)
-            mt_time = 1.50 if curr_mt in ("nllb-1.3b", "auto") else (0.80 if curr_mt == "nllb" else 3.50)
+            if curr_mt in ("gemini-flash", "llm-hybrid", "auto"):
+                mt_time = 0.35
+            elif curr_mt == "nllb-1.3b":
+                mt_time = 1.50
+            else:
+                mt_time = 0.80
             tot = stt_time + mt_time
+            engine_desc = "Gemini Flash AI" if curr_mt in ("gemini-flash", "llm-hybrid", "auto") else "NLLB Offline"
             self.summary.setText(
-                f"Ước tính độ trễ: ~{tot:.2f}s  (STT: {stt_time:.2f}s + MT: {mt_time:.2f}s) — Đủ mượt cho phiên dịch."
+                f"Ước tính độ trễ: ~{tot:.2f}s  (STT: {stt_time:.2f}s + MT {engine_desc}: {mt_time:.2f}s) — Chuẩn xác & mượt mà."
             )
 
 
