@@ -53,6 +53,8 @@ class SttConfig:
     early_commit: bool = True
     early_min_words: int = 3           # don't early-commit tiny fragments
     early_continue_s: float = 0.35     # speech needed *after* the boundary
+    use_context_prompt: bool = True    # feed previous transcribed sentences as initial_prompt
+    custom_initial_prompt: Optional[str] = None # static prompt if set
 
     @classmethod
     def speed_preset(cls, language: str | None = None, device: str = "auto") -> "SttConfig":
@@ -110,6 +112,35 @@ class StreamingTranscriber:
         # Language Whisper detected on the most recent pass (only meaningful
         # when cfg.language is None, i.e. autodetect mode).
         self.detected_language: Optional[str] = None
+        # Rolling context history of committed sentences to condition STT
+        self._context_history: list[str] = []
+
+    def _get_initial_prompt(self) -> Optional[str]:
+        """Build initial prompt from custom prompt + rolling context history."""
+        prompts = []
+        if self.cfg.custom_initial_prompt:
+            prompts.append(self.cfg.custom_initial_prompt.strip())
+        if self.cfg.use_context_prompt and self._context_history:
+            # Take last 2-3 committed sentences up to ~220 characters
+            recent = []
+            char_count = 0
+            for s in reversed(self._context_history):
+                if char_count + len(s) > 220:
+                    break
+                recent.insert(0, s)
+                char_count += len(s) + 1
+            if recent:
+                prompts.append(" ".join(recent))
+        return " ".join(prompts) if prompts else None
+
+    def _record_context(self, text: str) -> None:
+        """Store committed sentence in rolling context history."""
+        text = text.strip()
+        if not text:
+            return
+        self._context_history.append(text)
+        if len(self._context_history) > 10:
+            self._context_history = self._context_history[-10:]
 
     # ---------------------------------------------------------------- model
 
@@ -251,6 +282,7 @@ class StreamingTranscriber:
             self._trim_to(buf.size - cut, buf.size)
             self._last_partial = ""
             if sentence:
+                self._record_context(sentence)
                 self.on_commit(sentence, time.perf_counter() - t0)
             rest = " ".join(s[0] for s in segments[boundary + 1:]).strip()
             if rest:
@@ -267,6 +299,7 @@ class StreamingTranscriber:
         self._trim_to(total - consumed, total)
         self._last_partial = ""
         if text:
+            self._record_context(text)
             self.on_commit(text, time.perf_counter() - t0)
 
     def _trim_to(self, keep: int, seen: int) -> None:
@@ -279,10 +312,12 @@ class StreamingTranscriber:
     def _transcribe(self, audio: np.ndarray, beam_size: int) -> str:
         if audio.size < int(self.cfg.min_speech_s * RATE):
             return ""
+        prompt = self._get_initial_prompt()
         segments, _info = self.model.transcribe(
             audio,
             language=self.cfg.language,
             beam_size=beam_size,
+            initial_prompt=prompt,
             condition_on_previous_text=False,
             without_timestamps=True,
             vad_filter=False,  # we already ran VAD ourselves
@@ -295,10 +330,12 @@ class StreamingTranscriber:
         """Transcribe with segment timestamps: [(text, start_s, end_s), ...]."""
         if audio.size < int(self.cfg.min_speech_s * RATE):
             return []
+        prompt = self._get_initial_prompt()
         segments, info = self.model.transcribe(
             audio,
             language=self.cfg.language,
             beam_size=beam_size,
+            initial_prompt=prompt,
             condition_on_previous_text=False,
             vad_filter=False,
         )
