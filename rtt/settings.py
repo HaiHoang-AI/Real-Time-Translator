@@ -52,6 +52,7 @@ class ModelSettings:
     stt_model: str = "large-v3-turbo"   # large-v3-turbo | small | large-v3 | auto
     mt_engine: str = "nllb-1.3b"        # nllb-1.3b | nllb | llm-hybrid
     device: str = "auto"               # auto | cuda | cpu
+    speed_mode: bool = False            # ⚡ max speed: tiny whisper, 600M NLLB, greedy
 
 
 @dataclass

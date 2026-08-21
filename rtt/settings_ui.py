@@ -769,6 +769,37 @@ class ModelTab(QWidget):
 
         layout.addLayout(mt_layout)
 
+        # ⚡ Speed Mode Toggle
+        speed_frame = QFrame()
+        speed_frame.setStyleSheet(
+            f"background-color: {theme.raised}; border-radius: 10px; "
+            f"border: 2px solid {theme.teal};"
+        )
+        speed_layout = QHBoxLayout(speed_frame)
+        speed_layout.setContentsMargins(14, 10, 14, 10)
+
+        speed_icon = QLabel("⚡")
+        speed_icon.setStyleSheet("font-size: 22px; border: none;")
+        speed_layout.addWidget(speed_icon)
+
+        speed_text_layout = QVBoxLayout()
+        speed_text_layout.setSpacing(2)
+        speed_title = QLabel("Chế độ tốc độ cao")
+        speed_title.setStyleSheet(
+            f"color: {theme.text}; font-size: 14px; font-weight: bold; border: none;"
+        )
+        speed_desc = QLabel("Whisper tiny + NLLB 600M + greedy — độ trễ ~0.5s, chất lượng thấp hơn")
+        speed_desc.setStyleSheet(f"color: {theme.dim}; font-size: 11px; border: none;")
+        speed_text_layout.addWidget(speed_title)
+        speed_text_layout.addWidget(speed_desc)
+        speed_layout.addLayout(speed_text_layout, 1)
+
+        self.speed_tog = ToggleSwitch(theme)
+        self.speed_tog.setChecked(self.settings.data.model.speed_mode)
+        self.speed_tog.toggled.connect(self._on_speed_toggle)
+        speed_layout.addWidget(self.speed_tog)
+        layout.addWidget(speed_frame)
+
         # Summary & Restart Notice
         self.summary = QLabel("Tổng ước tính: ~1.9s — chuẩn xác & mượt mà cho phụ đề.")
         self.summary.setStyleSheet(
@@ -792,10 +823,15 @@ class ModelTab(QWidget):
         self.settings.update(model={'mt_engine': key})
         self._load_settings()
 
+    def _on_speed_toggle(self, checked: bool):
+        self.settings.update(model={'speed_mode': checked})
+        self._load_settings()
+
     def _load_settings(self):
         m_cfg = self.settings.data.model
         curr_stt = m_cfg.stt_model
         curr_mt = m_cfg.mt_engine
+        speed = m_cfg.speed_mode
 
         # Update STT cards UI
         for key, card in self.stt_cards.items():
@@ -816,13 +852,23 @@ class ModelTab(QWidget):
                     f"border: 1px solid transparent;"
                 )
 
+        # Update speed toggle
+        self.speed_tog.blockSignals(True)
+        self.speed_tog.setChecked(speed)
+        self.speed_tog.blockSignals(False)
+
         # Update summary text
-        stt_time = 0.40 if curr_stt in ("large-v3-turbo", "auto") else (0.20 if curr_stt == "small" else 1.20)
-        mt_time = 1.50 if curr_mt in ("nllb-1.3b", "auto") else (0.80 if curr_mt == "nllb" else 3.50)
-        tot = stt_time + mt_time
-        self.summary.setText(
-            f"Ước tính độ trễ: ~{tot:.2f}s  (STT: {stt_time:.2f}s + MT: {mt_time:.2f}s) — Đủ mượt cho phiên dịch."
-        )
+        if speed:
+            self.summary.setText(
+                "⚡ Chế độ tốc độ cao: ~0.5s  (Whisper tiny + NLLB 600M + greedy) — nhanh nhất có thể!"
+            )
+        else:
+            stt_time = 0.40 if curr_stt in ("large-v3-turbo", "auto") else (0.20 if curr_stt == "small" else 1.20)
+            mt_time = 1.50 if curr_mt in ("nllb-1.3b", "auto") else (0.80 if curr_mt == "nllb" else 3.50)
+            tot = stt_time + mt_time
+            self.summary.setText(
+                f"Ước tính độ trễ: ~{tot:.2f}s  (STT: {stt_time:.2f}s + MT: {mt_time:.2f}s) — Đủ mượt cho phiên dịch."
+            )
 
 
 class GlossaryTab(QWidget):

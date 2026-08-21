@@ -54,6 +54,28 @@ class SttConfig:
     early_min_words: int = 3           # don't early-commit tiny fragments
     early_continue_s: float = 0.35     # speech needed *after* the boundary
 
+    @classmethod
+    def speed_preset(cls, language: str | None = None, device: str = "auto") -> "SttConfig":
+        """Return a config tuned for minimum latency (quality tradeoff).
+
+        Balances speed against fast-speech resilience: we still commit
+        quickly, but not so aggressively that non-stop narration floods
+        the MT queue with micro-fragments.
+        """
+        return cls(
+            model_name="tiny",
+            language=language,
+            device=device,
+            tick_s=0.25,              # check VAD every 250ms (was 350)
+            commit_silence_s=0.40,    # commit after 400ms silence (was 450, not 300)
+            max_buffer_s=8.0,         # batch more speech per commit on non-stop talk
+            min_speech_s=0.20,
+            beam_size=1,              # greedy decoding
+            early_commit=True,
+            early_min_words=4,        # don't early-commit tiny 2-word fragments
+            early_continue_s=0.25,
+        )
+
 
 class StreamingTranscriber:
     """Feed audio with push(); receive on_partial/on_commit callbacks."""

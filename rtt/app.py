@@ -78,8 +78,10 @@ class Pipeline:
         src_lang = args.src
         tgt_lang = args.tgt
         device = args.device
+        self._speed_mode = False
 
         if settings is not None:
+            self._speed_mode = settings.data.model.speed_mode
             if settings.data.model.stt_model:
                 model_name = settings.data.model.stt_model
             if src_lang == "en" and settings.data.ui.src_lang != "en":
@@ -92,12 +94,21 @@ class Pipeline:
         if not model_name or model_name == "auto":
             model_name = "large-v3-turbo"
 
-        self.stt = StreamingTranscriber(
-            SttConfig(
+        # ⚡ Speed mode: override STT config for minimum latency
+        if self._speed_mode:
+            stt_cfg = SttConfig.speed_preset(
+                language=None if src_lang == "auto" else src_lang,
+                device=device,
+            )
+        else:
+            stt_cfg = SttConfig(
                 model_name=model_name,
                 language=None if src_lang == "auto" else src_lang,
                 device=device,
-            ),
+            )
+
+        self.stt = StreamingTranscriber(
+            stt_cfg,
             on_partial=self._on_partial,
             on_commit=self._on_commit,
         )
@@ -161,6 +172,10 @@ class Pipeline:
             return
 
         self.bridge.partial_changed.emit(("… " + text) if text else "")
+        # ⚡ Speed mode: skip live translation to avoid GPU contention
+        # (commits arrive fast enough with aggressive timing)
+        if self._speed_mode:
+            return
         # Queue the newest partial for live translation
         tgt = self._tgt_lang()
         src = self._src_lang()
@@ -219,6 +234,17 @@ class Pipeline:
         tgt = self._tgt_lang()
         src = self._src_lang()
         if tgt and tgt != src:
+            # ⚡ Speed mode: drop old items if NLLB can't keep up with fast speech
+            if self._speed_mode and self._mt_queue.qsize() > 3:
+                dropped = 0
+                while self._mt_queue.qsize() > 1:
+                    try:
+                        self._mt_queue.get_nowait()
+                        dropped += 1
+                    except queue.Empty:
+                        break
+                if dropped:
+                    print(f"[mt] ⚡ dropped {dropped} stale item(s) — fast speech overflow")
             self._mt_queue.put(text)
         else:
             self.bridge.committed_changed.emit(text)
@@ -268,7 +294,11 @@ class Pipeline:
         from rtt.translate import NLLB_1B3_REPO, NLLB_REPO, NllbTranslator
 
         mt_engine = self.settings.data.model.mt_engine if self.settings else "nllb-1.3b"
-        repo = NLLB_REPO if mt_engine == "nllb" else NLLB_1B3_REPO
+        # ⚡ Speed mode: always use 600M (smaller, faster)
+        if self._speed_mode:
+            repo = NLLB_REPO
+        else:
+            repo = NLLB_REPO if mt_engine == "nllb" else NLLB_1B3_REPO
 
         self.bridge.status_changed.emit("Đang tải mô hình dịch…")
         try:
@@ -295,16 +325,23 @@ class Pipeline:
             self.dub = DubPlayer(duck_level=duck_level, max_speed=max_speed)
             self.dub.start()
 
-        self.bridge.status_changed.emit("🟢 Mô hình đã sẵn sàng dịch!")
+        status_msg = "⚡ Chế độ tốc độ cao đã sẵn sàng!" if self._speed_mode else "🟢 Mô hình đã sẵn sàng dịch!"
+        self.bridge.status_changed.emit(status_msg)
         self._mt_ready.set()
         time.sleep(2.5)
         self.bridge.status_changed.emit("")
+        # ⚡ Speed mode: faster poll, no live translation overhead
+        poll_timeout = 0.05 if self._speed_mode else 0.15
+        commit_beam = 1 if self._speed_mode else 4
         while not self._stop.is_set():
             src = self._src_lang()
             tgt = self._tgt_lang()
             try:
-                text = self._mt_queue.get(timeout=0.15)
+                text = self._mt_queue.get(timeout=poll_timeout)
             except queue.Empty:
+                # ⚡ Speed mode: no live partial translation
+                if self._speed_mode:
+                    continue
                 with self._live_lock:
                     live, self._live_text = self._live_text, None
                 if live:
@@ -337,24 +374,34 @@ class Pipeline:
                 continue
             try:
                 t0 = time.perf_counter()
-                glossary = (
-                    self.settings.data.glossary.entries
-                    if self.settings else []
-                )
-                auto_caps = (
-                    self.settings.data.glossary.auto_lock_caps
-                    if self.settings else True
-                )
-                auto_camel = (
-                    self.settings.data.glossary.auto_lock_camel
-                    if self.settings else True
-                )
-                out = self.translator.translate(
-                    text, src, tgt, beam=4,
-                    glossary=glossary,
-                    auto_lock_caps=auto_caps,
-                    auto_lock_camel=auto_camel,
-                )
+                if self._speed_mode:
+                    # ⚡ Consumer-side drain: skip to newest if backlogged
+                    while not self._mt_queue.empty():
+                        try:
+                            text = self._mt_queue.get_nowait()
+                        except queue.Empty:
+                            break
+                    # ⚡ Skip term locker, call raw NLLB translate (beam=1 greedy)
+                    out = self.translator._nllb_translate(text, src, tgt, beam=commit_beam)
+                else:
+                    glossary = (
+                        self.settings.data.glossary.entries
+                        if self.settings else []
+                    )
+                    auto_caps = (
+                        self.settings.data.glossary.auto_lock_caps
+                        if self.settings else True
+                    )
+                    auto_camel = (
+                        self.settings.data.glossary.auto_lock_camel
+                        if self.settings else True
+                    )
+                    out = self.translator.translate(
+                        text, src, tgt, beam=commit_beam,
+                        glossary=glossary,
+                        auto_lock_caps=auto_caps,
+                        auto_lock_camel=auto_camel,
+                    )
                 if DEBUG:
                     print(f"[dbg] mt commit {len(text)} chars in "
                           f"{time.perf_counter()-t0:.2f}s", flush=True)
