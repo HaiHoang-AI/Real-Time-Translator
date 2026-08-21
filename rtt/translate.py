@@ -330,8 +330,12 @@ class GeminiTranslator:
 
         candidates = [
             ("v1beta", self.model),
-            ("v1beta", "gemini-1.5-flash"),
+            ("v1beta", "gemini-2.5-flash"),
+            ("v1beta", "gemini-flash-latest"),
+            ("v1beta", "gemini-2.5-flash-lite"),
+            ("v1beta", "gemini-3.7-flash"),
             ("v1beta", "gemini-2.0-flash"),
+            ("v1beta", "gemini-1.5-flash"),
             ("v1", "gemini-1.5-flash"),
         ]
 
