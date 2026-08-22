@@ -248,12 +248,29 @@ class GeminiTranslator:
         model: str = "gemini-2.0-flash",
         fallback_translator: Optional[NllbTranslator] = None,
         context_memory: Optional[ContextMemory] = None,
+        on_status: Optional[object] = None,
     ) -> None:
         self.api_key = (api_key or os.environ.get("GEMINI_API_KEY", "")).strip()
         self.model = model or "gemini-2.0-flash"
         self.fallback = fallback_translator
         self.context = context_memory or ContextMemory()
+        self.on_status = on_status
         self.device = "cloud/api"
+        self._last_error: str = ""
+        self._last_notify_time: float = 0.0
+
+    def _notify(self, msg: str) -> None:
+        now = time.time()
+        # Debounce notification so it doesn't spam on every sentence
+        if self.on_status and (now - self._last_notify_time > 8.0):
+            self._last_notify_time = now
+            try:
+                if callable(self.on_status):
+                    self.on_status(msg)
+                elif hasattr(self.on_status, "emit"):
+                    self.on_status.emit(msg)
+            except Exception:
+                pass
 
     def translate(
         self,
@@ -281,13 +298,19 @@ class GeminiTranslator:
             translated = self._call_gemini(text, src, tgt, glossary=glossary)
             if translated:
                 self.context.add(text, translated)
+                self._last_error = ""
                 return translated
         except Exception as exc:
             if os.environ.get("RTT_DEBUG") == "1":
                 print(f"[gemini_mt] warning: {exc}, using fallback")
 
-        # Fallback to local NLLB on any API error or empty response
+        # Fallback to local NLLB 1.3B on any API error or empty response
         if self.fallback:
+            if self._last_error == "429_quota":
+                self._notify("⚠️ Hết hạn ngạch Gemini (429) — Đang tự động dịch bằng NLLB 1.3B Offline")
+            else:
+                self._notify("⚠️ Mất kết nối Gemini API — Đang tự động dịch bằng NLLB 1.3B Offline")
+
             out = self.fallback.translate(
                 text, src, tgt, beam=beam, glossary=glossary,
                 auto_lock_caps=auto_lock_caps, auto_lock_camel=auto_lock_camel
@@ -395,7 +418,17 @@ class GeminiTranslator:
                                 if res:
                                     return res
                     break
+                except urllib.error.HTTPError as e:
+                    if e.code == 429:
+                        self._last_error = "429_quota"
+                    else:
+                        self._last_error = f"http_{e.code}"
+                    continue
+                except (urllib.error.URLError, TimeoutError, OSError):
+                    self._last_error = "network_error"
+                    continue
                 except Exception:
+                    self._last_error = "error"
                     continue
         return ""
 

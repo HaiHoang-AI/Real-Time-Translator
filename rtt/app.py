@@ -311,12 +311,13 @@ class Pipeline:
             if not self._speed_mode and mt_engine in ("gemini-flash", "llm-hybrid"):
                 api_key = self.settings.data.summary.api_key if self.settings else ""
                 model = self.settings.data.summary.model if self.settings else "gemini-2.0-flash"
-                fallback = NllbTranslator(model_repo=NLLB_REPO)
+                fallback = NllbTranslator(model_repo=NLLB_1B3_REPO)
                 self.translator = GeminiTranslator(
                     api_key=api_key,
                     model=model,
                     fallback_translator=fallback,
                     context_memory=ContextMemory(max_items=5),
+                    on_status=self.bridge.status_changed.emit,
                 )
             else:
                 self.translator = NllbTranslator(model_repo=repo)
