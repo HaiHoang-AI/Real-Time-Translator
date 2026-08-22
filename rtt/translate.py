@@ -433,6 +433,146 @@ class GeminiTranslator:
         return ""
 
 
+class OllamaTranslator:
+    """
+    Offline Local LLM Translator powered by Ollama (Qwen 2.5).
+    Runs 100% locally on GPU/CPU with full Context Memory support.
+    """
+
+    def __init__(
+        self,
+        model: str = "qwen2.5:3b",
+        host: str = "http://localhost:11434",
+        fallback_translator: Optional[NllbTranslator] = None,
+        context_memory: Optional[ContextMemory] = None,
+        on_status: Optional[object] = None,
+    ) -> None:
+        self.model = model or "qwen2.5:3b"
+        self.host = host.rstrip("/")
+        self.fallback = fallback_translator
+        self.context = context_memory or ContextMemory()
+        self.on_status = on_status
+        self.device = "local/gpu"
+        self._last_notify_time: float = 0.0
+
+    def _notify(self, msg: str) -> None:
+        now = time.time()
+        if self.on_status and (now - self._last_notify_time > 8.0):
+            self._last_notify_time = now
+            try:
+                if callable(self.on_status):
+                    self.on_status(msg)
+                elif hasattr(self.on_status, "emit"):
+                    self.on_status.emit(msg)
+            except Exception:
+                pass
+
+    def translate(
+        self,
+        text: str,
+        src: str,
+        tgt: str,
+        beam: int = 1,
+        glossary: list[dict] | None = None,
+        auto_lock_caps: bool = True,
+        auto_lock_camel: bool = True,
+    ) -> str:
+        text = text.strip()
+        if not text or src == tgt:
+            return text
+
+        try:
+            translated = self._call_ollama(text, src, tgt, glossary=glossary)
+            if translated:
+                self.context.add(text, translated)
+                return translated
+        except Exception as exc:
+            if os.environ.get("RTT_DEBUG") == "1":
+                print(f"[ollama_mt] warning: {exc}, using fallback")
+
+        # Fallback to local NLLB 1.3B on any Ollama error or empty response
+        if self.fallback:
+            self._notify("⚠️ Không kết nối được Ollama — Đang tự động dịch bằng NLLB 1.3B Offline")
+            out = self.fallback.translate(
+                text, src, tgt, beam=beam, glossary=glossary,
+                auto_lock_caps=auto_lock_caps, auto_lock_camel=auto_lock_camel
+            )
+            self.context.add(text, out)
+            return out
+
+        return text
+
+    def _nllb_translate(self, text: str, src: str, tgt: str, beam: int = 1) -> str:
+        if self.fallback:
+            return self.fallback._nllb_translate(text, src, tgt, beam=beam)
+        return text
+
+    def _call_ollama(self, text: str, src: str, tgt: str, glossary: list[dict] | None = None) -> str:
+        src_name = LANG_NAMES.get(src, src)
+        tgt_name = LANG_NAMES.get(tgt, tgt)
+
+        context_str = self.context.get_context_text(max_pairs=3)
+        glossary_section = ""
+        if glossary:
+            terms = [f"- {e.get('source', '')} -> {e.get('target', '')}" for e in glossary if e.get('source')]
+            if terms:
+                glossary_section = f"\n[Thuật ngữ chuyên ngành]:\n" + "\n".join(terms[:10])
+
+        system_instruction = (
+            f"You are an expert real-time interpreter translating from {src_name} to {tgt_name} for live subtitles. "
+            f"Strict rules:\n"
+            f"1. Output ONLY the pure translated {tgt_name} text.\n"
+            f"2. Maintain natural spoken flow and correct pronouns based on context.\n"
+            f"3. Never output Chinese characters, notes, quotes, or explanations."
+        )
+
+        messages = [
+            {"role": "system", "content": system_instruction}
+        ]
+        if context_str:
+            messages.append({"role": "system", "content": f"Preceding dialogue context:\n{context_str}"})
+        if glossary_section:
+            messages.append({"role": "system", "content": glossary_section})
+
+        messages.append({"role": "user", "content": text})
+
+        candidate_models = [self.model, "llama3.2:3b", "qwen2.5:3b", "qwen2.5:7b"]
+        # Remove duplicates while preserving order
+        seen = set()
+        models_to_try = [m for m in candidate_models if m and not (m in seen or seen.add(m))]
+
+        for m_name in models_to_try:
+            url = f"{self.host}/api/chat"
+            payload = {
+                "model": m_name,
+                "messages": messages,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 128,
+                }
+            }
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=15.0) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+                    res = body.get("message", {}).get("content", "").strip()
+                    if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')):
+                        res = res[1:-1].strip()
+                    if res:
+                        return res
+            except Exception:
+                continue
+
+        return ""
+
+
 # --------------------------------------------------------------------- demo
 
 def main() -> None:

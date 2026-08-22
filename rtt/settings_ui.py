@@ -729,7 +729,8 @@ class ModelTab(QWidget):
         self.mt_frames = {}
 
         mt_options = [
-            ("gemini-flash", "Gemini 2.0 Flash", "ĐỀ XUẤT (Ngữ cảnh AI)", "Dịch siêu mượt, hiểu ngữ cảnh video"),
+            ("gemini-flash", "Gemini 2.0 Flash", "ĐỀ XUẤT (Cloud AI)", "Dịch siêu mượt, hiểu ngữ cảnh video"),
+            ("qwen", "Qwen 2.5 AI", "Offline AI (+0.3s)", "Ngữ cảnh AI mượt, chạy Local GPU"),
             ("nllb-1.3b", "NLLB-200 1.3B", "Offline (+1.5s)", "Chất lượng cao, không cần mạng"),
             ("nllb", "NLLB-200 600M", "Offline Nhanh (+0.8s)", "Nhẹ, tiết kiệm VRAM"),
         ]
@@ -866,12 +867,17 @@ class ModelTab(QWidget):
             stt_time = 0.40 if curr_stt in ("large-v3-turbo", "auto") else (0.20 if curr_stt == "small" else 1.20)
             if curr_mt in ("gemini-flash", "llm-hybrid", "auto"):
                 mt_time = 0.35
+                engine_desc = "Gemini Flash AI"
+            elif curr_mt == "qwen":
+                mt_time = 0.30
+                engine_desc = "Qwen 2.5 Local AI"
             elif curr_mt == "nllb-1.3b":
                 mt_time = 1.50
+                engine_desc = "NLLB 1.3B Offline"
             else:
                 mt_time = 0.80
+                engine_desc = "NLLB 600M Offline"
             tot = stt_time + mt_time
-            engine_desc = "Gemini Flash AI" if curr_mt in ("gemini-flash", "llm-hybrid", "auto") else "NLLB Offline"
             self.summary.setText(
                 f"Ước tính độ trễ: ~{tot:.2f}s  (STT: {stt_time:.2f}s + MT {engine_desc}: {mt_time:.2f}s) — Chuẩn xác & mượt mà."
             )

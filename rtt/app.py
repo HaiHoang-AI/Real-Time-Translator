@@ -297,6 +297,7 @@ class Pipeline:
             NLLB_1B3_REPO,
             NLLB_REPO,
             NllbTranslator,
+            OllamaTranslator,
         )
 
         mt_engine = self.settings.data.model.mt_engine if self.settings else "gemini-flash"
@@ -315,6 +316,14 @@ class Pipeline:
                 self.translator = GeminiTranslator(
                     api_key=api_key,
                     model=model,
+                    fallback_translator=fallback,
+                    context_memory=ContextMemory(max_items=5),
+                    on_status=self.bridge.status_changed.emit,
+                )
+            elif not self._speed_mode and mt_engine in ("qwen", "ollama"):
+                fallback = NllbTranslator(model_repo=NLLB_1B3_REPO)
+                self.translator = OllamaTranslator(
+                    model="qwen2.5:3b",
                     fallback_translator=fallback,
                     context_memory=ContextMemory(max_items=5),
                     on_status=self.bridge.status_changed.emit,
