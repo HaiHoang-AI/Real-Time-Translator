@@ -345,6 +345,130 @@ class StreamingTranscriber:
         return result
 
 
+class MoonshineStreamingTranscriber:
+    """Real-time ultra-low-latency streaming transcriber powered by Moonshine Voice."""
+
+    def __init__(
+        self,
+        config: SttConfig | None = None,
+        on_partial: Callable[[str], None] | None = None,
+        on_commit: Callable[[str, float], None] | None = None,
+    ) -> None:
+        self.cfg = config or SttConfig()
+        self.on_partial = on_partial or (lambda text: None)
+        self.on_commit = on_commit or (lambda text, latency: None)
+        self.detected_language: Optional[str] = self.cfg.language or "en"
+        self.device = "onnx"
+
+        from moonshine_voice import (
+            ModelArch,
+            TranscriptEventListener,
+            Transcriber,
+            get_model_for_language,
+        )
+
+        lang = self.cfg.language or "en"
+        model_name = (self.cfg.model_name or "moonshine-medium").lower()
+
+        if "tiny" in model_name:
+            wanted_arch = ModelArch.TINY_STREAMING
+        elif "small" in model_name:
+            wanted_arch = ModelArch.SMALL_STREAMING
+        else:
+            wanted_arch = ModelArch.MEDIUM_STREAMING
+
+        try:
+            path, resolved_arch = get_model_for_language(lang, wanted_arch)
+        except Exception:
+            try:
+                path, resolved_arch = get_model_for_language(lang)
+            except Exception:
+                path, resolved_arch = get_model_for_language("en", wanted_arch)
+
+        self._transcriber = Transcriber(model_path=path, model_arch=resolved_arch)
+        self._stream = self._transcriber.create_stream()
+
+        parent = self
+
+        class _Listener(TranscriptEventListener):
+            def __init__(self):
+                self._last_partial = ""
+
+            def on_line_updated(self, event):
+                text = event.line.text.strip()
+                if text and text != self._last_partial:
+                    self._last_partial = text
+                    parent.on_partial(text)
+
+            def on_line_completed(self, event):
+                text = event.line.text.strip()
+                if text:
+                    self._last_partial = ""
+                    lat = (event.line.last_transcription_latency_ms or 50) / 1000.0
+                    parent.on_commit(text, lat)
+
+        self._listener = _Listener()
+        self._stream.add_listener(self._listener)
+        self._stream.start()
+
+        self._buf_queue: list[np.ndarray] = []
+        self._buf_lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+
+    def push(self, samples: np.ndarray) -> None:
+        if samples.size == 0:
+            return
+        with self._buf_lock:
+            self._buf_queue.append(samples)
+
+    def start(self) -> None:
+        self._thread = threading.Thread(target=self._run, daemon=True, name="moonshine-stt")
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+        try:
+            self._stream.stop()
+            self._stream.close()
+            self._transcriber.close()
+        except Exception:
+            pass
+
+    def _run(self) -> None:
+        tick = 0.08
+        while not self._stop.is_set():
+            time.sleep(tick)
+            chunks = []
+            with self._buf_lock:
+                if self._buf_queue:
+                    chunks = self._buf_queue[:]
+                    self._buf_queue.clear()
+
+            if chunks:
+                audio = np.concatenate(chunks)
+                try:
+                    self._stream.add_audio(audio)
+                    self._stream.update_transcription()
+                except Exception as exc:
+                    _dbg(f"[moonshine] transcribe error: {exc}")
+
+
+def create_transcriber(
+    config: SttConfig | None = None,
+    on_partial: Callable[[str], None] | None = None,
+    on_commit: Callable[[str, float], None] | None = None,
+) -> StreamingTranscriber | MoonshineStreamingTranscriber:
+    """Factory creating either Faster-Whisper or Moonshine streaming transcriber."""
+    cfg = config or SttConfig()
+    name = (cfg.model_name or "").lower()
+    if "moonshine" in name:
+        return MoonshineStreamingTranscriber(cfg, on_partial, on_commit)
+    return StreamingTranscriber(cfg, on_partial, on_commit)
+
+
 # --------------------------------------------------------------------- demo
 
 def main() -> None:

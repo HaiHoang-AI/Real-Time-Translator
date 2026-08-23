@@ -701,7 +701,9 @@ class ModelTab(QWidget):
 
         self.stt_cards = {}
         stt_models_data = [
-            ("large-v3-turbo", "faster-whisper large-v3-turbo", "1.5 GB", "4.0%", "0.40", 75, "ĐỀ XUẤT"),
+            ("moonshine-medium", "moonshine medium (streaming)", "0.5 GB", "3.2%", "0.08", 95, "⚡ ĐỀ XUẤT • SIÊU NHANH"),
+            ("large-v3-turbo", "faster-whisper large-v3-turbo", "1.5 GB", "4.0%", "0.40", 75, "Whisper Turbo"),
+            ("moonshine-tiny", "moonshine tiny (streaming)", "0.1 GB", "8.5%", "0.03", 25, "cực nhẹ"),
             ("small", "faster-whisper small", "0.5 GB", "9.8%", "0.20", 30, "máy yếu"),
             ("large-v3", "faster-whisper large-v3", "3.0 GB", "3.5%", "1.20", 90, "chính xác nhất"),
         ]
@@ -838,7 +840,11 @@ class ModelTab(QWidget):
 
         # Update STT cards UI
         for key, card in self.stt_cards.items():
-            is_active = (key == curr_stt) or (key == "large-v3-turbo" and curr_stt == "auto")
+            is_active = (
+                (key == curr_stt)
+                or (key == "moonshine-medium" and curr_stt in ("auto", "moonshine", "moonshine-medium"))
+                or (key == "large-v3-turbo" and curr_stt in ("whisper", "turbo", "faster-whisper large-v3-turbo"))
+            )
             card.set_active(is_active)
 
         # Update MT frames UI
@@ -871,7 +877,16 @@ class ModelTab(QWidget):
                 "⚡ Chế độ tốc độ cao: ~0.5s  (Whisper tiny + NLLB 600M + greedy) — nhanh nhất có thể!"
             )
         else:
-            stt_time = 0.40 if curr_stt in ("large-v3-turbo", "auto") else (0.20 if curr_stt == "small" else 1.20)
+            if curr_stt in ("moonshine-tiny", "tiny-streaming"):
+                stt_time = 0.03
+            elif curr_stt in ("moonshine", "moonshine-medium", "medium-streaming", "auto"):
+                stt_time = 0.08
+            elif curr_stt in ("large-v3-turbo", "turbo"):
+                stt_time = 0.40
+            elif curr_stt == "small":
+                stt_time = 0.20
+            else:
+                stt_time = 1.20
             if curr_mt in ("gemini-flash", "llm-hybrid", "auto"):
                 mt_time = 0.35
                 engine_desc = "Gemini Flash AI"

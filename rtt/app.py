@@ -33,7 +33,7 @@ import numpy as np
 from rtt.audio import LoopbackCapture, MonoResampler16k
 from rtt.history import TranscriptManager, TranscriptSession
 from rtt.settings import AppSettings
-from rtt.stt import SttConfig, StreamingTranscriber
+from rtt.stt import SttConfig, StreamingTranscriber, create_transcriber
 from rtt.theme import apply_theme, get_theme, load_custom_fonts
 
 DEBUG = os.environ.get("RTT_DEBUG") == "1"
@@ -107,7 +107,7 @@ class Pipeline:
                 device=device,
             )
 
-        self.stt = StreamingTranscriber(
+        self.stt = create_transcriber(
             stt_cfg,
             on_partial=self._on_partial,
             on_commit=self._on_commit,

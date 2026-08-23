@@ -49,7 +49,7 @@ class DisplaySettings:
 @dataclass
 class ModelSettings:
     """STT + MT engine selection."""
-    stt_model: str = "large-v3-turbo"   # large-v3-turbo | small | large-v3 | auto
+    stt_model: str = "moonshine-medium" # moonshine-medium | moonshine-tiny | large-v3-turbo | small | large-v3 | auto
     mt_engine: str = "gemini-flash"     # gemini-flash | llama-3b | qwen-3b | qwen-7b | nllb-1.3b | nllb | llm-hybrid
     device: str = "auto"               # auto | cuda | cpu
     speed_mode: bool = False            # ⚡ max speed: tiny whisper, 600M NLLB, greedy
