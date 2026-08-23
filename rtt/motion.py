@@ -99,22 +99,12 @@ class ElasticButton(QPushButton):
 # ---------------------------------------------------------------------------
 
 class HoverLiftFrame(QFrame):
-    """Card frame that lifts (-2px) and expands drop shadow smoothly on hover."""
+    """Card frame that lifts (-2px) smoothly on hover without DWM shadow glitches."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._lift_offset: float = 0.0
-        self._shadow_blur: float = 8.0
-
-        # Drop shadow effect
-        self._shadow = QGraphicsDropShadowEffect(self)
-        self._shadow.setBlurRadius(8.0)
-        self._shadow.setColor(QColor(0, 0, 0, 40))
-        self._shadow.setOffset(0, 3)
-        self.setGraphicsEffect(self._shadow)
-
         self._anim_lift = QPropertyAnimation(self, b"liftOffset", self)
-        self._anim_blur = QPropertyAnimation(self, b"shadowBlur", self)
 
     def get_lift_offset(self) -> float:
         return self._lift_offset
@@ -125,30 +115,13 @@ class HoverLiftFrame(QFrame):
 
     liftOffset = Property(float, get_lift_offset, set_lift_offset)
 
-    def get_shadow_blur(self) -> float:
-        return self._shadow_blur
-
-    def set_shadow_blur(self, blur: float) -> None:
-        self._shadow_blur = blur
-        self._shadow.setBlurRadius(blur)
-
-    shadowBlur = Property(float, get_shadow_blur, set_shadow_blur)
-
     def enterEvent(self, event) -> None:
         self._anim_lift.stop()
         self._anim_lift.setDuration(180)
         self._anim_lift.setStartValue(self._lift_offset)
-        self._anim_lift.setEndValue(-2.5)
+        self._anim_lift.setEndValue(-2.0)
         self._anim_lift.setEasingCurve(QEasingCurve.OutCubic)
         self._anim_lift.start()
-
-        self._anim_blur.stop()
-        self._anim_blur.setDuration(180)
-        self._anim_blur.setStartValue(self._shadow_blur)
-        self._anim_blur.setEndValue(22.0)
-        self._anim_blur.setEasingCurve(QEasingCurve.OutCubic)
-        self._anim_blur.start()
-
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
@@ -158,14 +131,6 @@ class HoverLiftFrame(QFrame):
         self._anim_lift.setEndValue(0.0)
         self._anim_lift.setEasingCurve(QEasingCurve.OutQuad)
         self._anim_lift.start()
-
-        self._anim_blur.stop()
-        self._anim_blur.setDuration(220)
-        self._anim_blur.setStartValue(self._shadow_blur)
-        self._anim_blur.setEndValue(8.0)
-        self._anim_blur.setEasingCurve(QEasingCurve.OutQuad)
-        self._anim_blur.start()
-
         super().leaveEvent(event)
 
     def paintEvent(self, event) -> None:
