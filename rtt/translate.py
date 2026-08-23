@@ -519,19 +519,19 @@ class OllamaTranslator:
                 glossary_section = f"\n[Thuật ngữ chuyên ngành]:\n" + "\n".join(terms[:10])
 
         system_instruction = (
-            f"Bạn là chuyên gia thông dịch viên trực tiếp cabin từ {src_name} sang {tgt_name} cho phụ đề trực tiếp. "
-            f"Nhiệm vụ: Dịch đầy đủ, chính xác từng câu sang {tgt_name} theo văn phong tự nhiên, trôi chảy, thoát ý theo cách nói của người bản xứ. "
-            f"QUY TẮC BẮT BUỘC:\n"
-            f"1. Dịch trọn vẹn toàn bộ ý của câu gốc, không bỏ sót vế câu hay thông tin nào.\n"
-            f"2. Bám sát ngữ cảnh các câu trước để xưng hô tự nhiên và giữ mạch ý liền mạch.\n"
-            f"3. CHỈ xuất duy nhất câu dịch {tgt_name}, không kèm dấu ngoặc kép, không kèm chữ Hán, không giải thích."
+            f"You are a professional {src_name}-to-{tgt_name} subtitle translator. "
+            f"Translate the given {src_name} text into natural, clear, and faithful {tgt_name} subtitles.\n"
+            f"Rules:\n"
+            f"1. Translate accurately and completely, preserving the exact meaning, tone, and spoken flow of the original sentence.\n"
+            f"2. Maintain natural pronouns (you -> bạn, I -> tôi, we -> chúng ta, they -> họ/chúng).\n"
+            f"3. Output ONLY the pure translated {tgt_name} text, with no notes, quotes, or explanations."
         )
 
         messages = [
             {"role": "system", "content": system_instruction}
         ]
         if context_str:
-            messages.append({"role": "system", "content": f"[Ngữ cảnh hội thoại trước đó]:\n{context_str}"})
+            messages.append({"role": "system", "content": f"Preceding dialogue context:\n{context_str}"})
         if glossary_section:
             messages.append({"role": "system", "content": glossary_section})
 
