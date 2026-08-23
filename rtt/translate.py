@@ -519,23 +519,23 @@ class OllamaTranslator:
                 glossary_section = f"\n[Thuật ngữ chuyên ngành]:\n" + "\n".join(terms[:10])
 
         system_instruction = (
-            f"You are a professional {src_name}-to-{tgt_name} subtitle translator. "
-            f"Translate the given {src_name} text into natural, clear, and faithful {tgt_name} subtitles.\n"
-            f"Rules:\n"
-            f"1. Translate accurately and completely, preserving the exact meaning, tone, and spoken flow of the original sentence.\n"
-            f"2. Maintain natural pronouns (you -> bạn, I -> tôi, we -> chúng ta, they -> họ/chúng).\n"
-            f"3. Output ONLY the pure translated {tgt_name} text, with no notes, quotes, or explanations."
+            f"Bạn là chuyên gia dịch phụ đề cabin thời gian thực từ {src_name} sang {tgt_name}.\n"
+            f"Nhiệm vụ: Dịch câu được cung cấp sang {tgt_name} một cách tự nhiên, trung thực và chính xác 100% ngữ nghĩa.\n"
+            f"QUY TẮC BẮT BUỘC:\n"
+            f"1. Dịch trung thực từng câu, tuyệt đối KHÔNG trả lời câu hỏi, KHÔNG sáng tác thêm nội dung.\n"
+            f"2. Giữ đúng đại từ nhân xưng và ngữ điệu (câu hỏi dịch thành câu hỏi, câu cảm thán dịch thành câu cảm thán).\n"
+            f"3. CHỈ xuất duy nhất câu dịch {tgt_name} thuần túy, không có chữ Hán, không kèm ngoặc kép, không giải thích."
         )
 
         messages = [
             {"role": "system", "content": system_instruction}
         ]
         if context_str:
-            messages.append({"role": "system", "content": f"Preceding dialogue context:\n{context_str}"})
+            messages.append({"role": "system", "content": f"[Ngữ cảnh các câu trước đó]:\n{context_str}"})
         if glossary_section:
             messages.append({"role": "system", "content": glossary_section})
 
-        messages.append({"role": "user", "content": text})
+        messages.append({"role": "user", "content": f"Dịch sang {tgt_name}:\n{text}"})
 
         candidate_models = [self.model, "llama3.2:3b", "qwen2.5:3b", "qwen2.5:7b"]
         # Remove duplicates while preserving order
@@ -549,7 +549,7 @@ class OllamaTranslator:
                 "messages": messages,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1,
+                    "temperature": 0.0,
                     "num_predict": 128,
                 }
             }
