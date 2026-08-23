@@ -320,6 +320,14 @@ class Pipeline:
                     context_memory=ContextMemory(max_items=5),
                     on_status=self.bridge.status_changed.emit,
                 )
+            elif not self._speed_mode and mt_engine in ("llama-3b", "llama", "llama3.2", "llama-3.2", "llama3.2:3b"):
+                fallback = NllbTranslator(model_repo=NLLB_1B3_REPO)
+                self.translator = OllamaTranslator(
+                    model="llama3.2:3b",
+                    fallback_translator=fallback,
+                    context_memory=ContextMemory(max_items=5),
+                    on_status=self.bridge.status_changed.emit,
+                )
             elif not self._speed_mode and mt_engine in ("qwen", "qwen-3b", "ollama"):
                 fallback = NllbTranslator(model_repo=NLLB_1B3_REPO)
                 self.translator = OllamaTranslator(

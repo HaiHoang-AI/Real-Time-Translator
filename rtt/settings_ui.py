@@ -730,6 +730,7 @@ class ModelTab(QWidget):
 
         mt_options = [
             ("gemini-flash", "Gemini 2.0 Flash", "ĐỀ XUẤT (Cloud AI)", "Dịch siêu mượt, hiểu ngữ cảnh video"),
+            ("llama-3b", "Llama 3.2 3B", "Offline Nhanh (+0.3s)", "Thuần Việt 100%, không lẫn chữ Hán"),
             ("qwen-3b", "Qwen 2.5 3B", "Offline Nhanh (+0.3s)", "Ngữ cảnh AI mượt, nhẹ GPU"),
             ("qwen-7b", "Qwen 2.5 7B", "Offline Chuẩn (+0.6s)", "Ngữ cảnh AI sâu, chuẩn xác cao"),
             ("nllb-1.3b", "NLLB-200 1.3B", "Offline (+1.5s)", "Chất lượng cao, không cần mạng"),
@@ -845,6 +846,7 @@ class ModelTab(QWidget):
             is_active = (
                 (key == curr_mt)
                 or (key == "gemini-flash" and curr_mt in ("auto", "llm-hybrid"))
+                or (key == "llama-3b" and curr_mt in ("llama", "llama3.2", "llama-3.2", "llama3.2:3b"))
                 or (key == "qwen-3b" and curr_mt == "qwen")
             )
             if is_active:
@@ -873,6 +875,9 @@ class ModelTab(QWidget):
             if curr_mt in ("gemini-flash", "llm-hybrid", "auto"):
                 mt_time = 0.35
                 engine_desc = "Gemini Flash AI"
+            elif curr_mt in ("llama", "llama-3b", "llama3.2", "llama-3.2", "llama3.2:3b"):
+                mt_time = 0.30
+                engine_desc = "Llama 3.2 3B Local"
             elif curr_mt in ("qwen", "qwen-3b"):
                 mt_time = 0.30
                 engine_desc = "Qwen 2.5 3B Local"
