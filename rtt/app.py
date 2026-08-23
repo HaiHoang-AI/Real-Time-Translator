@@ -190,6 +190,8 @@ class Pipeline:
 
     def _on_session_switched(self, new_sess) -> None:
         self.session = new_sess
+        if self.translator and hasattr(self.translator, "context"):
+            self.translator.context.set_topic(new_sess.session_name if new_sess else "")
 
     def _on_pause_toggled(self, is_paused: bool) -> None:
         if is_paused:
@@ -346,6 +348,9 @@ class Pipeline:
                 )
             else:
                 self.translator = NllbTranslator(model_repo=repo)
+            
+            if self.translator and hasattr(self.translator, "context") and self.session:
+                self.translator.context.set_topic(self.session.session_name or "")
         except Exception as exc:  # noqa: BLE001
             print(f"[mt] FAILED to load translator, passing text through: {exc}")
             self.translator = None

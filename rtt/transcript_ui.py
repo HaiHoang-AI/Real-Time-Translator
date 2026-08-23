@@ -731,6 +731,160 @@ class SummaryDialog(QDialog):
                 QMessageBox.critical(self, "Lỗi", f"Không thể lưu file: {e}")
 
 
+
+# ───────────────────────────────────── New Session Dialog ──────────────
+
+class NewSessionDialog(QDialog):
+    """Modern modal dialog prompting user for video name / meeting topic to prime AI context."""
+
+    def __init__(self, parent=None, theme: Optional[ThemeColors] = None, default_name: str = ""):
+        super().__init__(parent)
+        self.theme = theme or DARK
+        self.setWindowTitle("Tạo Phiên Dịch Mới")
+        self.setFixedWidth(460)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {self.theme.bg};
+                color: {self.theme.text};
+                border-radius: 12px;
+            }}
+            QLabel {{
+                color: {self.theme.text};
+            }}
+            QLineEdit {{
+                background-color: {self.theme.surface};
+                color: {self.theme.text};
+                border: 1px solid {self.theme.border};
+                border-radius: 8px;
+                padding: 10px 14px;
+                font-size: 13px;
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {self.theme.teal};
+            }}
+            QPushButton {{
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: 500;
+            }}
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(14)
+
+        # Header
+        header_lbl = QLabel("Tạo Phiên Dịch Mới")
+        header_lbl.setFont(font_ui(12, QFont.Weight.Bold))
+        header_lbl.setStyleSheet(f"color: {self.theme.text};")
+        layout.addWidget(header_lbl)
+
+        # Description / Tip
+        tip_lbl = QLabel(
+            "💡 <b>Mẹo dịch chuẩn:</b> Nhập tên video, phim hoặc nội dung cuộc họp để mô hình AI "
+            "hiểu đúng ngữ cảnh, tự động xưng hô chuẩn và dịch đúng thuật ngữ chuyên ngành."
+        )
+        tip_lbl.setWordWrap(True)
+        tip_lbl.setFont(font_ui(9))
+        tip_lbl.setStyleSheet(f"color: {self.theme.dim}; line-height: 1.4;")
+        layout.addWidget(tip_lbl)
+
+        # Input
+        self.input_field = QLineEdit(self)
+        self.input_field.setPlaceholderText("Ví dụ: Phim Oppenheimer, Họp kỹ thuật AI, Video du lịch...")
+        if default_name:
+            self.input_field.setText(default_name)
+            self.input_field.selectAll()
+        layout.addWidget(self.input_field)
+
+        # Quick preset chips
+        chips_lbl = QLabel("Gợi ý chủ đề nhanh:")
+        chips_lbl.setFont(font_ui(8.5, QFont.Weight.Medium))
+        chips_lbl.setStyleSheet(f"color: {self.theme.dim};")
+        layout.addWidget(chips_lbl)
+
+        chips_layout = QHBoxLayout()
+        chips_layout.setSpacing(6)
+        presets = [
+            ("🎬 Phim ảnh", "Phim điện ảnh / Phim dài tập"),
+            ("💼 Cuộc họp", "Cuộc họp công việc / Thảo luận dự án"),
+            ("💻 Công nghệ", "Lập trình / Công nghệ phần mềm"),
+            ("📚 Học tập", "Bài giảng học thuật / Khóa học"),
+            ("🎙️ Phỏng vấn", "Talkshow / Phỏng vấn"),
+        ]
+        for label, full_text in presets:
+            chip_btn = QPushButton(label)
+            chip_btn.setCursor(Qt.PointingHandCursor)
+            chip_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {self.theme.raised};
+                    color: {self.theme.text};
+                    border: 1px solid {self.theme.border};
+                    border-radius: 6px;
+                    padding: 5px 8px;
+                    font-size: 11px;
+                }}
+                QPushButton:hover {{
+                    background-color: {self.theme.surface};
+                    border-color: {self.theme.teal};
+                }}
+            """)
+            chip_btn.clicked.connect(lambda _, txt=full_text: self._apply_preset(txt))
+            chips_layout.addWidget(chip_btn)
+
+        layout.addLayout(chips_layout)
+        layout.addSpacing(6)
+
+        # Action Buttons
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+        btn_layout.addStretch()
+
+        self.skip_btn = QPushButton("Bỏ qua")
+        self.skip_btn.setCursor(Qt.PointingHandCursor)
+        self.skip_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {self.theme.dim};
+                border: 1px solid {self.theme.border};
+            }}
+            QPushButton:hover {{
+                color: {self.theme.text};
+                background-color: {self.theme.raised};
+            }}
+        """)
+        self.skip_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(self.skip_btn)
+
+        self.start_btn = QPushButton("Bắt đầu phiên")
+        self.start_btn.setCursor(Qt.PointingHandCursor)
+        self.start_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.theme.teal};
+                color: #000000;
+                border: none;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #38bdf8;
+            }}
+        """)
+        self.start_btn.clicked.connect(self.accept)
+        btn_layout.addWidget(self.start_btn)
+
+        layout.addLayout(btn_layout)
+
+    def _apply_preset(self, text: str) -> None:
+        self.input_field.setText(text)
+        self.input_field.setFocus()
+
+    def get_session_name(self) -> str:
+        return self.input_field.text().strip()
+
+
 # ───────────────────────────────────── Main Panel Widget ──────────────
 
 class TranscriptPanel(QWidget):
@@ -1355,15 +1509,10 @@ class TranscriptPanel(QWidget):
 
     def _create_new_session(self) -> None:
         default_name = f"Phiên {datetime.now().strftime('%d/%m %H:%M')}"
-        name, ok = QInputDialog.getText(
-            self,
-            "Tạo phiên mới",
-            "Nhập tên cho phiên dịch mới:",
-            QLineEdit.Normal,
-            default_name,
-        )
-        if ok:
-            session_name = name.strip() if name.strip() else default_name
+        dlg = NewSessionDialog(self, theme=self.theme, default_name="")
+        if dlg.exec() == QDialog.Accepted:
+            raw_name = dlg.get_session_name()
+            session_name = raw_name if raw_name else default_name
             self.session_mgr.create_session(session_name)
 
     def _on_session_clicked(self, session_id: str) -> None:

@@ -71,11 +71,18 @@ LANG_NAMES = {
 
 
 class ContextMemory:
-    """Rolling memory of recent source-target sentence pairs for discourse context."""
+    """Rolling memory of recent source-target sentence pairs and session topic."""
 
     def __init__(self, max_items: int = 5) -> None:
         self.max_items = max_items
         self._history: list[tuple[str, str]] = []
+        self.topic: str = ""
+
+    def set_topic(self, topic: str) -> None:
+        self.topic = (topic or "").strip()
+
+    def get_topic(self) -> str:
+        return self.topic
 
     def add(self, src: str, tgt: str) -> None:
         src = src.strip()
@@ -341,6 +348,9 @@ class GeminiTranslator:
             if terms:
                 glossary_section = f"\n[Thuật ngữ ưu tiên]:\n" + "\n".join(terms[:10]) + "\n"
 
+        topic = self.context.get_topic()
+        topic_section = f"\n[Chủ đề / Bối cảnh cuộc trò chuyện]: {topic}\n" if topic else ""
+
         system_instruction = (
             f"Bạn là thông dịch viên cabin thời gian thực xuất sắc từ {src_name} sang {tgt_name}.\n"
             f"Nguyên tắc phiên dịch:\n"
@@ -349,7 +359,7 @@ class GeminiTranslator:
             f"3. CHỈ XUẤT DUY NHẤT BẢN DỊCH, không kèm dấu ngoặc kép, không giải thích hay chú thích thừa."
         )
 
-        user_content = f"{system_instruction}\n\n{context_section}{glossary_section}\nCâu cần dịch: {text}"
+        user_content = f"{system_instruction}\n{topic_section}{context_section}{glossary_section}\nCâu cần dịch: {text}"
 
         candidates = [
             ("v1beta", self.model),
@@ -530,6 +540,9 @@ class OllamaTranslator:
         messages = [
             {"role": "system", "content": system_instruction}
         ]
+        topic = self.context.get_topic()
+        if topic:
+            messages.append({"role": "system", "content": f"[Chủ đề / Bối cảnh nội dung]: {topic}"})
         if context_str:
             messages.append({"role": "system", "content": f"[Ngữ cảnh các câu trước đó]:\n{context_str}"})
         if glossary_section:
