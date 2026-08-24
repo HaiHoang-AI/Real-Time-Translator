@@ -142,6 +142,7 @@ class MainWindow(QWidget):
         super().__init__(parent)
         self.settings = settings
         self.session = session
+        self.bridge = bridge
         self.overlay_bridge = bridge
         self.theme = get_theme(settings.data.ui.theme if settings else "dark")
         self.drag_pos: Optional[QPoint] = None
@@ -293,7 +294,7 @@ class MainWindow(QWidget):
         self.stack.addWidget(self.transcript_panel)
 
         # Page 1: Settings Panel
-        self.settings_panel = SettingsPanel(self.settings, self.stack)
+        self.settings_panel = SettingsPanel(self.settings, self.stack, bridge=self.bridge)
         self.stack.addWidget(self.settings_panel)
 
         container_layout.addWidget(self.stack, 1)

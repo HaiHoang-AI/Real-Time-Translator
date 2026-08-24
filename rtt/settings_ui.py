@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import sys
 import os
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QStackedWidget, QSlider, QCheckBox, 
@@ -8,7 +11,7 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect, QFrame, QSizePolicy, QSizeGrip,
     QStyledItemDelegate
 )
-from PySide6.QtCore import Qt, Signal, Property, QRect, QPoint, QSize, QRectF, QPropertyAnimation, QEasingCurve
+from PySide6.QtCore import Qt, Signal, Property, QRect, QPoint, QSize, QRectF, QPropertyAnimation, QEasingCurve, QTimer
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath, QFont, QLinearGradient
 
 try:
@@ -309,10 +312,11 @@ def make_scrollable_tab(widget: QWidget, theme: ThemeColors) -> QScrollArea:
 
 
 class DisplayTab(QWidget):
-    def __init__(self, theme: ThemeColors, settings: AppSettings):
+    def __init__(self, theme: ThemeColors, settings: AppSettings, bridge: Optional[object] = None):
         super().__init__()
         self.theme = theme
         self.settings = settings
+        self.bridge = bridge
         self.setMinimumHeight(480)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -518,8 +522,65 @@ class DisplayTab(QWidget):
         font_layout.addWidget(self.font_tog)
         layout.addLayout(font_layout)
         
+        # Action Buttons: Test Subtitle & Reset Position
+        btn_box = QHBoxLayout()
+        btn_box.setSpacing(10)
+
+        self.test_btn = QPushButton("👁️ Hiện thử phụ đề (5s)")
+        self.test_btn.setCursor(Qt.PointingHandCursor)
+        self.test_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {theme.raised};
+                color: {theme.text};
+                border: 1px solid {theme.border};
+                border-radius: 8px;
+                padding: 8px 14px;
+                font-size: 12px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: {theme.surface};
+                border-color: {theme.teal};
+            }}
+        """)
+        self.test_btn.clicked.connect(self._on_test_subtitle)
+        btn_box.addWidget(self.test_btn)
+
+        self.reset_pos_btn = QPushButton("🔄 Đặt lại vị trí phụ đề")
+        self.reset_pos_btn.setCursor(Qt.PointingHandCursor)
+        self.reset_pos_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {theme.raised};
+                color: {theme.text};
+                border: 1px solid {theme.border};
+                border-radius: 8px;
+                padding: 8px 14px;
+                font-size: 12px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: {theme.surface};
+                border-color: {theme.teal};
+            }}
+        """)
+        self.reset_pos_btn.clicked.connect(self._on_reset_position)
+        btn_box.addWidget(self.reset_pos_btn)
+
+        layout.addLayout(btn_box)
         layout.addStretch()
         self._load_settings()
+
+    def _on_test_subtitle(self):
+        if self.bridge:
+            self.bridge.committed_changed.emit("Đây là phụ đề mẫu đang hiển thị trên màn hình.")
+            self.bridge.partial_changed.emit("… Thử nghiệm phụ đề")
+            QTimer.singleShot(5000, lambda: (
+                self.bridge.committed_changed.emit(""),
+                self.bridge.partial_changed.emit("")
+            ))
+
+    def _on_reset_position(self):
+        self.settings.update(display={'position': 'bottom'})
         
     def _on_font_size(self, v):
         self.f_tgt.setPixelSize(v)
@@ -1322,9 +1383,10 @@ class Sidebar(QWidget):
 
 
 class SettingsPanel(QWidget):
-    def __init__(self, settings: AppSettings, parent=None):
+    def __init__(self, settings: AppSettings, parent=None, bridge=None):
         super().__init__(parent)
         self.settings = settings
+        self.bridge = bridge
         self.theme = get_theme(settings.data.ui.theme if settings else "dark")
 
         main_layout = QHBoxLayout(self)
@@ -1341,7 +1403,7 @@ class SettingsPanel(QWidget):
         content_layout.setContentsMargins(0, 0, 0, 0)
 
         self.stack = QStackedWidget()
-        self.stack.addWidget(make_scrollable_tab(DisplayTab(self.theme, self.settings), self.theme))
+        self.stack.addWidget(make_scrollable_tab(DisplayTab(self.theme, self.settings, bridge=self.bridge), self.theme))
         self.stack.addWidget(make_scrollable_tab(ModelTab(self.theme, self.settings), self.theme))
         self.stack.addWidget(make_scrollable_tab(DubTab(self.theme, self.settings), self.theme))
         self.stack.addWidget(make_scrollable_tab(SummaryTab(self.theme, self.settings), self.theme))
