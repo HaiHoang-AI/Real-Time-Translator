@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.error
 import urllib.request
@@ -52,22 +53,76 @@ LANG_TO_NLLB = {
 }
 
 LANG_NAMES = {
-    "en": "tiếng Anh (English)",
-    "vi": "tiếng Việt (Vietnamese)",
-    "ja": "tiếng Nhật (Japanese)",
-    "ko": "tiếng Hàn (Korean)",
-    "zh": "tiếng Trung (Chinese)",
-    "fr": "tiếng Pháp (French)",
-    "es": "tiếng Tây Ban Nha (Spanish)",
-    "de": "tiếng Đức (German)",
-    "ru": "tiếng Nga (Russian)",
-    "th": "tiếng Thái (Thai)",
-    "id": "tiếng Indonesia (Indonesian)",
-    "pt": "tiếng Bồ Đào Nha (Portuguese)",
-    "it": "tiếng Ý (Italian)",
-    "ar": "tiếng Ả Rập (Arabic)",
-    "hi": "tiếng Hindi (Hindi)",
+    "en": "tiếng Anh",
+    "vi": "tiếng Việt",
+    "ja": "tiếng Nhật",
+    "ko": "tiếng Hàn",
+    "zh": "tiếng Trung",
+    "fr": "tiếng Pháp",
+    "es": "tiếng Tây Ban Nha",
+    "de": "tiếng Đức",
+    "ru": "tiếng Nga",
+    "th": "tiếng Thái",
+    "id": "tiếng Indonesia",
+    "pt": "tiếng Bồ Đào Nha",
+    "it": "tiếng Ý",
+    "ar": "tiếng Ả Rập",
+    "hi": "tiếng Hindi",
 }
+
+
+def _clean_llm_translation(raw: str) -> str:
+    """Strip out any LLM prefixes, quotes, meta-commentary, or refusal hallucinations."""
+    if not raw:
+        return ""
+    res = raw.strip()
+
+    # Strip markdown codeblocks if any
+    if res.startswith("```") and res.endswith("```"):
+        lines = res.splitlines()
+        if len(lines) >= 3:
+            res = "\n".join(lines[1:-1]).strip()
+
+    # If the response contains apology / conversational boilerplate, extract the quoted/actual text
+    if any(k in res.lower() for k in ("xin lỗi", "dưới đây là", "không cần dịch", "câu trả lời", "bản dịch lại")):
+        # Check if there is a quoted section
+        quotes = re.findall(r'["“](.+?)["”]', res, flags=re.DOTALL)
+        if quotes:
+            res = quotes[-1].strip()
+        else:
+            lines = [line.strip() for line in res.splitlines() if line.strip()]
+            valid_lines = [
+                l for l in lines
+                if not any(l.lower().startswith(k) for k in ("tôi xin lỗi", "xin lỗi", "dưới đây là", "vì câu này", "lưu ý", "ghi chú", "đây là"))
+            ]
+            if valid_lines:
+                res = " ".join(valid_lines).strip()
+
+    # Strip outer quotes
+    if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')) or (res.startswith("'") and res.endswith("'")):
+        res = res[1:-1].strip()
+
+    # Match prefix patterns like:
+    # "Dịch sang tiếng Việt (Vietnamese): ..."
+    # "Dịch sang tiếng Việt: ..."
+    # "Bản dịch: ..."
+    # "Vietnamese: ..."
+    prefix_regex = r'(?:Dịch\s*sang\s*tiếng\s*[\w\u00C0-\u1EF9\s]+(?:\s*\([^\)]*\))?|Bản\s*dịch|Lời\s*dịch|Câu\s*dịch|Translation|Vietnamese|Tiếng\s*Việt)\s*[:：\-]\s*'
+    if re.search(prefix_regex, res, flags=re.IGNORECASE):
+        parts = re.split(prefix_regex, res, flags=re.IGNORECASE)
+        for p in reversed(parts):
+            if p.strip():
+                res = p.strip()
+                break
+
+    # Strip any remaining leading prefix
+    res = re.sub(r'^(?:Dịch\s*sang\s*tiếng\s*[\w\u00C0-\u1EF9\s]+(?:\s*\([^\)]*\))?|Bản\s*dịch|Lời\s*dịch|Câu\s*dịch|Translation|Vietnamese|Tiếng\s*Việt)\s*[:：\-]\s*', '', res, flags=re.IGNORECASE).strip()
+
+    # Strip again outer quotes
+    if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')) or (res.startswith("'") and res.endswith("'")):
+        res = res[1:-1].strip()
+
+    return res
 
 
 class ContextMemory:
@@ -338,9 +393,7 @@ class GeminiTranslator:
         tgt_name = LANG_NAMES.get(tgt, tgt)
 
         context_str = self.context.get_context_text(max_pairs=3)
-        context_section = ""
-        if context_str:
-            context_section = f"\n[Ngữ cảnh các câu gần nhất]:\n{context_str}\n"
+        context_section = f"\n[Ngữ cảnh các câu gần nhất]:\n{context_str}\n" if context_str else ""
 
         glossary_section = ""
         if glossary:
@@ -349,14 +402,14 @@ class GeminiTranslator:
                 glossary_section = f"\n[Thuật ngữ ưu tiên]:\n" + "\n".join(terms[:10]) + "\n"
 
         topic = self.context.get_topic()
-        topic_section = f"\n[Chủ đề / Bối cảnh cuộc trò chuyện]: {topic}\n" if topic else ""
+        topic_section = f"\n[Bối cảnh tham khảo]: {topic} (Chỉ dùng để hiểu đúng thuật ngữ. Bắt buộc dịch câu thoại, không bình luận về bối cảnh).\n" if topic else ""
 
         system_instruction = (
-            f"Bạn là thông dịch viên cabin thời gian thực xuất sắc từ {src_name} sang {tgt_name}.\n"
-            f"Nguyên tắc phiên dịch:\n"
-            f"1. Dịch chuẩn xác, tự nhiên, văn phong nói/thuyết trình trôi chảy.\n"
-            f"2. Bám sát ngữ cảnh các câu trước để xưng hô chuẩn xác (tôi/bạn/chúng ta...) và giữ tính liền mạch.\n"
-            f"3. CHỈ XUẤT DUY NHẤT BẢN DỊCH, không kèm dấu ngoặc kép, không giải thích hay chú thích thừa."
+            f"Bạn là chuyên gia thông dịch viên cabin trực tiếp từ {src_name} sang {tgt_name}.\n"
+            f"QUY TẮC BẮT BUỘC:\n"
+            f"1. Dịch chuẩn xác, tự nhiên, bám sát ngữ cảnh nói/thuyết trình.\n"
+            f"2. Tuyệt đối KHÔNG lặp lại các tiền tố như 'Dịch sang...', 'Bản dịch:', 'Vietnamese:', KHÔNG giải thích hay bình luận.\n"
+            f"3. CHỈ XUẤT DUY NHẤT BẢN DỊCH {tgt_name} thuần túy, không kèm dấu ngoặc kép."
         )
 
         user_content = f"{system_instruction}\n{topic_section}{context_section}{glossary_section}\nCâu cần dịch: {text}"
@@ -423,8 +476,7 @@ class GeminiTranslator:
                             parts = cand_list[0].get("content", {}).get("parts", [])
                             if parts:
                                 res = parts[0].get("text", "").strip()
-                                if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')):
-                                    res = res[1:-1].strip()
+                                res = _clean_llm_translation(res)
                                 if res:
                                     return res
                     break
@@ -488,14 +540,14 @@ class OllamaTranslator:
         auto_lock_camel: bool = True,
     ) -> str:
         text = text.strip()
-        if not text or src == tgt:
-            return text
+        if not text:
+            return ""
 
         try:
-            translated = self._call_ollama(text, src, tgt, glossary=glossary)
-            if translated:
-                self.context.add(text, translated)
-                return translated
+            res = self._call_ollama(text, src, tgt, glossary=glossary)
+            if res:
+                self.context.add(text, res)
+                return res
         except Exception as exc:
             if os.environ.get("RTT_DEBUG") == "1":
                 print(f"[ollama_mt] warning: {exc}, using fallback")
@@ -529,12 +581,13 @@ class OllamaTranslator:
                 glossary_section = f"\n[Thuật ngữ chuyên ngành]:\n" + "\n".join(terms[:10])
 
         system_instruction = (
-            f"Bạn là chuyên gia dịch phụ đề cabin thời gian thực từ {src_name} sang {tgt_name}.\n"
-            f"Nhiệm vụ: Dịch câu được cung cấp sang {tgt_name} một cách tự nhiên, trung thực và chính xác 100% ngữ nghĩa.\n"
+            f"Bạn là hệ thống dịch cabin phụ đề tự động từ {src_name} sang {tgt_name}.\n"
+            f"Nhiệm vụ: Dịch trung thực và tự nhiên câu thoại sang {tgt_name}.\n"
             f"QUY TẮC BẮT BUỘC:\n"
-            f"1. Dịch trung thực từng câu, tuyệt đối KHÔNG trả lời câu hỏi, KHÔNG sáng tác thêm nội dung.\n"
-            f"2. Giữ đúng đại từ nhân xưng và ngữ điệu (câu hỏi dịch thành câu hỏi, câu cảm thán dịch thành câu cảm thán).\n"
-            f"3. CHỈ xuất duy nhất câu dịch {tgt_name} thuần túy, không có chữ Hán, không kèm ngoặc kép, không giải thích."
+            f"1. Dịch trung thực câu thoại sang {tgt_name}. Tuyệt đối KHÔNG trả lời câu hỏi, KHÔNG đối thoại, KHÔNG xin lỗi, KHÔNG giải thích, KHÔNG từ chối dịch.\n"
+            f"2. Tuyệt đối KHÔNG lặp lại các tiền tố như 'Dịch sang...', 'Bản dịch:', 'Vietnamese:', 'Tiếng Việt:' hoặc tên chủ đề.\n"
+            f"3. Giữ đúng đại từ nhân xưng và ngữ điệu tự nhiên của người nói.\n"
+            f"4. CHỈ XUẤT DUY NHẤT câu dịch {tgt_name} thuần túy, không có chữ Hán, không kèm ngoặc kép."
         )
 
         messages = [
@@ -542,7 +595,7 @@ class OllamaTranslator:
         ]
         topic = self.context.get_topic()
         if topic:
-            messages.append({"role": "system", "content": f"[Chủ đề / Bối cảnh nội dung]: {topic}"})
+            messages.append({"role": "system", "content": f"[Bối cảnh tham khảo]: {topic} (Chỉ dùng để hiểu đúng thuật ngữ. Bắt buộc dịch toàn bộ câu thoại, không bình luận về bối cảnh)."})
         if context_str:
             messages.append({"role": "system", "content": f"[Ngữ cảnh các câu trước đó]:\n{context_str}"})
         if glossary_section:
@@ -577,8 +630,7 @@ class OllamaTranslator:
                 with urllib.request.urlopen(req, timeout=15.0) as resp:
                     body = json.loads(resp.read().decode("utf-8"))
                     res = body.get("message", {}).get("content", "").strip()
-                    if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')):
-                        res = res[1:-1].strip()
+                    res = _clean_llm_translation(res)
                     if res:
                         return res
             except Exception:
