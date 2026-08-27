@@ -88,8 +88,8 @@ class ThemeColors:
     glass_opacity: float  # 0–1, overlay backdrop
     glass_blur: int       # px
 
-    # Playful Claymorphism extensions
-    border_chunky: str = "#1E293B"
+    # Playful Clean extensions
+    border_chunky: str = "rgba(0,0,0,0.08)"
     cta_bg: str = "#10B981"
     cta_hover: str = "#059669"
     cta_text: str = "#FFFFFF"
@@ -108,9 +108,9 @@ DARK = ThemeColors(
     raised="#252834",
     text="#F8FAFC",
     dim="#94A3B8",
-    border="rgba(255,255,255,0.12)",
-    border_strong="rgba(255,255,255,0.22)",
-    border_chunky="#383F52",
+    border="rgba(255,255,255,0.08)",
+    border_strong="rgba(255,255,255,0.15)",
+    border_chunky="rgba(255,255,255,0.08)",
     accent="#10B981",
     accent_text="#FFFFFF",
     teal="#2DD4BF",
@@ -136,9 +136,9 @@ LIGHT = ThemeColors(
     raised="#F3EFE8",
     text="#18181B",
     dim="#64748B",
-    border="rgba(30, 41, 59, 0.14)",
-    border_strong="#2D3748",
-    border_chunky="#1E293B",
+    border="rgba(0, 0, 0, 0.08)",
+    border_strong="rgba(0, 0, 0, 0.12)",
+    border_chunky="rgba(0, 0, 0, 0.08)",
     accent="#10B981",
     accent_text="#FFFFFF",
     teal="#0D9488",
@@ -241,11 +241,11 @@ QLabel[class="section-title"] {{
     color: {theme.dim};
 }}
 
-/* ── Buttons (Chunky Playful Style) ───────────────── */
+/* ── Buttons (Playful Clean Style) ───────────────── */
 QPushButton {{
     background-color: {theme.raised};
     color: {theme.text};
-    border: 1.5px solid {theme.border_strong};
+    border: 1px solid {theme.border};
     border-radius: 10px;
     padding: 8px 16px;
     font-size: 13px;
@@ -254,13 +254,13 @@ QPushButton {{
 
 QPushButton:hover {{
     background-color: {'#EAE5DD' if theme.name == 'light' else '#2E3242'};
-    border-color: {theme.border_chunky};
+    border-color: {theme.border_strong};
 }}
 
 QPushButton:pressed {{
     background-color: {theme.accent};
     color: {theme.accent_text};
-    border-color: {theme.border_chunky};
+    border: none;
 }}
 
 /* Primary & CTA Buttons (Vibrant Emerald) */
@@ -268,7 +268,7 @@ QPushButton[class="primary"],
 QPushButton[class="btn-cta"] {{
     background-color: {theme.cta_bg};
     color: {theme.cta_text};
-    border: 2px solid {theme.border_chunky};
+    border: none;
     border-radius: 12px;
     font-weight: 700;
     font-size: 13.5px;
@@ -278,12 +278,12 @@ QPushButton[class="btn-cta"] {{
 QPushButton[class="primary"]:hover,
 QPushButton[class="btn-cta"]:hover {{
     background-color: {theme.cta_hover};
-    border-color: {theme.border_chunky};
+    border: none;
 }}
 
 QPushButton[class="ghost"] {{
     background: transparent;
-    border: 1.5px solid {theme.border};
+    border: 1px solid {theme.border};
     border-radius: 10px;
     color: {theme.dim};
     font-weight: 600;
@@ -298,14 +298,14 @@ QPushButton[class="ghost"]:hover {{
 /* ── Segment Control (segmented toggle) ──────────── */
 QWidget[class="segment-bg"] {{
     background-color: {theme.raised};
-    border: 1.5px solid {theme.border_strong};
+    border: 1px solid {theme.border};
     border-radius: 12px;
 }}
 
 QPushButton[class="seg-active"] {{
     background-color: {theme.accent};
     color: {theme.accent_text};
-    border: 1.5px solid {theme.border_chunky};
+    border: none;
     border-radius: 9px;
     font-weight: 700;
     padding: 8px 0;
@@ -335,7 +335,7 @@ QSlider::groove:horizontal {{
 
 QSlider::handle:horizontal {{
     background: {theme.accent};
-    border: 2px solid {theme.border_chunky};
+    border: 2px solid {theme.surface};
     width: 18px;
     height: 18px;
     margin: -7px 0;
@@ -363,7 +363,7 @@ QCheckBox::indicator {{
     width: 42px;
     height: 23px;
     border-radius: 12px;
-    border: 1.5px solid {theme.border_strong};
+    border: 1.5px solid {theme.border};
 }}
 
 QCheckBox::indicator:unchecked {{
@@ -372,7 +372,7 @@ QCheckBox::indicator:unchecked {{
 
 QCheckBox::indicator:checked {{
     background-color: {theme.accent};
-    border-color: {theme.border_chunky};
+    border-color: {theme.accent};
 }}
 
 /* ── Scroll area ─────────────────────────────────── */
@@ -409,7 +409,7 @@ QScrollBar:horizontal {{
 QLineEdit {{
     background-color: {theme.surface};
     color: {theme.text};
-    border: 1.5px solid {theme.border_strong};
+    border: 1px solid {theme.border};
     border-radius: 10px;
     padding: 9px 13px;
     font-size: 13px;
@@ -417,7 +417,7 @@ QLineEdit {{
 }}
 
 QLineEdit:focus {{
-    border: 2px solid {theme.accent};
+    border: 1.5px solid {theme.accent};
     background-color: {theme.surface};
 }}
 
@@ -425,7 +425,7 @@ QLineEdit:focus {{
 QComboBox {{
     background-color: {theme.raised};
     color: {theme.text};
-    border: 1.5px solid {theme.border_strong};
+    border: 1px solid {theme.border};
     border-radius: 10px;
     padding: 8px 14px;
     font-size: 13px;
@@ -434,7 +434,7 @@ QComboBox {{
 }}
 
 QComboBox:hover {{
-    border-color: {theme.border_chunky};
+    border-color: {theme.border_strong};
 }}
 
 QComboBox::drop-down {{
@@ -445,7 +445,7 @@ QComboBox::drop-down {{
 QComboBox QAbstractItemView {{
     background-color: {theme.surface};
     color: {theme.text};
-    border: 1.5px solid {theme.border_strong};
+    border: 1px solid {theme.border};
     border-radius: 10px;
     selection-background-color: {theme.raised};
     selection-color: {theme.accent};
@@ -453,24 +453,24 @@ QComboBox QAbstractItemView {{
     padding: 6px;
 }}
 
-/* ── Card containers (Claymorphism & Playful) ────── */
+/* ── Card containers (Clean Soft Cards) ─────────── */
 QFrame[class="card"],
 QFrame[class="clay-card"] {{
     background-color: {theme.surface};
-    border: 1.5px solid {theme.border_strong};
+    border: 1px solid {theme.border};
     border-radius: 14px;
 }}
 
 QFrame[class="card-active"] {{
     background-color: {theme.surface};
-    border: 2px solid {theme.accent};
+    border: 1.5px solid {theme.accent};
     border-radius: 14px;
 }}
 
 QFrame[class="card-surface"],
 QFrame[class="clay-hero"] {{
     background-color: {theme.raised};
-    border: 2px solid {theme.border_chunky};
+    border: 1px solid {theme.border};
     border-radius: 16px;
 }}
 
@@ -486,7 +486,7 @@ QFrame[class="separator"] {{
 QPushButton[class="tab-active"] {{
     background-color: {theme.raised};
     color: {theme.text};
-    border: 1.5px solid {theme.border_strong};
+    border: 1px solid {theme.border};
     border-radius: 10px;
     text-align: left;
     padding: 10px 14px;
@@ -496,7 +496,7 @@ QPushButton[class="tab-active"] {{
 QPushButton[class="tab-inactive"] {{
     background: transparent;
     color: {theme.dim};
-    border: 1.5px solid transparent;
+    border: none;
     border-radius: 10px;
     text-align: left;
     padding: 10px 14px;

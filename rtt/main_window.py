@@ -70,7 +70,7 @@ class TopTabButton(ElasticButton):
                 QPushButton {{
                     background-color: {self.theme.accent};
                     color: {self.theme.accent_text};
-                    border: 1.5px solid {self.theme.border_chunky};
+                    border: none;
                     border-radius: 9px;
                     padding: 0 16px;
                     font-weight: 700;
@@ -81,7 +81,7 @@ class TopTabButton(ElasticButton):
                 QPushButton {{
                     background-color: transparent;
                     color: {self.theme.dim};
-                    border: 1.5px solid transparent;
+                    border: none;
                     border-radius: 9px;
                     padding: 0 16px;
                     font-weight: 600;
@@ -194,7 +194,7 @@ class MainWindow(QWidget):
         # ── 1. Top Header Bar with Navigation Tabs & Pill Badge ─────
         self.header = HeaderBar(self, self.container)
         self.header.setFixedHeight(54)
-        self.header.setStyleSheet(f"border-bottom: 1.5px solid {self.theme.border_strong}; background: transparent;")
+        self.header.setStyleSheet(f"border-bottom: 1px solid {self.theme.border_strong}; background: transparent;")
         header_layout = QHBoxLayout(self.header)
         header_layout.setContentsMargins(16, 0, 12, 0)
         header_layout.setSpacing(12)
@@ -220,7 +220,7 @@ class MainWindow(QWidget):
         tab_bar_frame.setStyleSheet(f"""
             QFrame {{
                 background-color: {self.theme.raised};
-                border: 1.5px solid {self.theme.border_strong};
+                border: 1px solid {self.theme.border_strong};
                 border-radius: 12px;
             }}
         """)

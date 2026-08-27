@@ -113,7 +113,7 @@ class SegmentedControl(QFrame):
                     QPushButton {{
                         background-color: {self._theme.accent};
                         color: {self._theme.accent_text};
-                        border: 1.5px solid {self._theme.border_chunky};
+                        border: none;
                         border-radius: 7px;
                         font-weight: 700;
                     }}
@@ -123,7 +123,7 @@ class SegmentedControl(QFrame):
                     QPushButton {{
                         background-color: transparent;
                         color: {self._theme.dim};
-                        border: 1px solid transparent;
+                        border: none;
                         border-radius: 7px;
                         font-weight: 600;
                     }}
@@ -144,11 +144,11 @@ class ThemeSwitcher(SegmentedControl):
         self.setStyleSheet(f"""
             ThemeSwitcher {{
                 background-color: {theme.raised};
-                border: 1.5px solid {theme.border_strong};
+                border: 1px solid {theme.border};
                 border-radius: 9px;
             }}
             QPushButton {{
-                border: 1px solid transparent;
+                border: none;
                 padding: 4px 9px;
                 border-radius: 6px;
                 font-family: "{font_ui()}";
@@ -166,7 +166,7 @@ class ThemeSwitcher(SegmentedControl):
                     QPushButton {{
                         background-color: {self._theme.accent};
                         color: {self._theme.accent_text};
-                        border: 1px solid {self._theme.border_chunky};
+                        border: none;
                         border-radius: 6px;
                         font-weight: 700;
                     }}
@@ -176,7 +176,7 @@ class ThemeSwitcher(SegmentedControl):
                     QPushButton {{
                         background-color: transparent;
                         color: {self._theme.dim};
-                        border: 1px solid transparent;
+                        border: none;
                         font-weight: 500;
                     }}
                 """)
@@ -339,18 +339,18 @@ class HudWidget(QWidget):
         self.setStyleSheet(f"""
             #HudContainer {{
                 background-color: {theme.surface};
-                border: 2px solid {theme.border_chunky};
+                border: none;
                 border-radius: 18px;
             }}
             #Header {{
-                border-bottom: 1.5px solid {theme.border_strong};
+                border-bottom: 1px solid {theme.border};
             }}
             QLabel {{
                 color: {theme.text};
             }}
             .LangBox {{
                 background-color: {theme.raised};
-                border: 1.5px solid {theme.border_strong};
+                border: 1px solid {theme.border};
                 border-radius: 10px;
             }}
             .LangLabel {{
@@ -361,7 +361,7 @@ class HudWidget(QWidget):
             }}
             .StatBox {{
                 background-color: {theme.raised};
-                border: 1.5px solid {theme.border_strong};
+                border: 1px solid {theme.border};
                 border-radius: 10px;
             }}
             .StatLabel {{

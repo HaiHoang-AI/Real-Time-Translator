@@ -181,7 +181,7 @@ class SegmentControl(QWidget):
             }}
             QPushButton {{
                 background-color: transparent;
-                border: 1px solid transparent;
+                border: none;
                 border-radius: 7px;
                 color: {theme.dim};
                 padding: 4px 12px;
@@ -190,7 +190,7 @@ class SegmentControl(QWidget):
             QPushButton:checked {{
                 background-color: {theme.accent};
                 color: {theme.accent_text};
-                border: 1px solid {theme.border_chunky};
+                border: none;
                 font-weight: 700;
             }}
         """)

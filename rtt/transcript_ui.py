@@ -94,12 +94,12 @@ class TranscriptEntryWidget(HoverLiftFrame):
     def setup_ui(self):
         is_dark = (getattr(self.theme, 'name', '') == 'dark')
         bg_col = "#1E222D" if is_dark else "#FFFFFF"
-        border_col = self.theme.accent if self.is_latest else ("rgba(255,255,255,0.08)" if is_dark else "rgba(30,41,59,0.12)")
+        border_col = self.theme.accent if self.is_latest else ("rgba(255,255,255,0.06)" if is_dark else "rgba(0,0,0,0.06)")
 
         self.setStyleSheet(f"""
             TranscriptEntryWidget {{
                 background-color: {bg_col};
-                border: 1.5px solid {border_col};
+                border: 1px solid {border_col};
                 border-radius: 12px;
             }}
         """)
@@ -268,7 +268,7 @@ class SidebarActionItemWidget(QPushButton):
                 QPushButton {{
                     background-color: {self.theme.cta_bg};
                     color: {self.theme.cta_text};
-                    border: 1.5px solid {self.theme.border_chunky};
+                    border: none;
                     border-radius: 9px;
                     padding: 0 12px;
                     text-align: center;
@@ -283,7 +283,7 @@ class SidebarActionItemWidget(QPushButton):
         if self.is_selected:
             bg = "#2B2F3D" if is_dark else "#E2DDD3"
             text_color = self.theme.accent
-            border_color = self.theme.accent
+            border_color = "transparent"
             font_w = "bold"
         else:
             bg = "transparent"
@@ -297,7 +297,7 @@ class SidebarActionItemWidget(QPushButton):
             QPushButton {{
                 background-color: {bg};
                 color: {text_color};
-                border: 1.5px solid {border_color};
+                border: none;
                 border-radius: 8px;
                 padding: 0 10px;
                 text-align: left;
@@ -305,7 +305,7 @@ class SidebarActionItemWidget(QPushButton):
             }}
             QPushButton:hover {{
                 background-color: {hover_bg};
-                border-color: {self.theme.border};
+                border: none;
             }}
         """)
 
@@ -520,13 +520,12 @@ class ClaudeSessionItemWidget(QWidget):
     def _update_style(self) -> None:
         is_dark = (getattr(self.theme, 'name', '') == 'dark')
         if self.is_active:
-            active_bg = "rgba(16, 185, 129, 0.12)" if is_dark else "#DCFCE7"
-            active_border = self.theme.accent
+            active_bg = "rgba(16, 185, 129, 0.15)" if is_dark else "#DCFCE7"
             self.setStyleSheet(f"""
                 ClaudeSessionItemWidget {{
                     background-color: {active_bg};
-                    border: 1.5px solid {active_border};
-                    border-radius: 9px;
+                    border: none;
+                    border-radius: 8px;
                 }}
             """)
             self.title_lbl.setStyleSheet(f"color: {self.theme.text}; font-weight: bold; background: transparent; border: none;")
@@ -535,12 +534,12 @@ class ClaudeSessionItemWidget(QWidget):
             self.setStyleSheet(f"""
                 ClaudeSessionItemWidget {{
                     background-color: transparent;
-                    border: 1.5px solid transparent;
-                    border-radius: 9px;
+                    border: none;
+                    border-radius: 8px;
                 }}
                 ClaudeSessionItemWidget:hover {{
                     background-color: {hover_bg};
-                    border-color: {self.theme.border};
+                    border: none;
                 }}
             """)
             self.title_lbl.setStyleSheet(f"color: {self.theme.dim}; font-weight: 500; background: transparent; border: none;")
@@ -1005,7 +1004,7 @@ class TranscriptPanel(QWidget):
         self.sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.sidebar.setStyleSheet(f"""
             QFrame {{
-                border-right: 1.5px solid {self.theme.border_strong};
+                border-right: 1px solid {self.theme.border};
                 background-color: {self.theme.bg};
             }}
         """)
@@ -1104,10 +1103,10 @@ class TranscriptPanel(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
-        # ── Header Bar (Playful Claymorphic) ──
+        # ── Header Bar (Playful Clean) ──
         header = QFrame()
         header.setFixedHeight(50)
-        header.setStyleSheet(f"border-bottom: 1.5px solid {self.theme.border_strong}; background: transparent;")
+        header.setStyleSheet(f"border-bottom: 1px solid {self.theme.border}; background: transparent;")
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(14, 0, 14, 0)
         header_layout.setSpacing(10)
@@ -1135,7 +1134,7 @@ class TranscriptPanel(QWidget):
             QPushButton {{
                 background-color: {self.theme.raised};
                 color: {self.theme.text};
-                border: 1.5px solid {self.theme.border_strong};
+                border: 1px solid {self.theme.border};
                 border-radius: 8px;
                 padding: 0 10px;
                 font-weight: 700;
@@ -1158,7 +1157,7 @@ class TranscriptPanel(QWidget):
             QLineEdit {{
                 background-color: {self.theme.surface};
                 color: {self.theme.text};
-                border: 1.5px solid {self.theme.border_strong};
+                border: 1px solid {self.theme.border};
                 border-radius: 14px;
                 padding: 0 12px;
             }}
