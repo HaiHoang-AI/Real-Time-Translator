@@ -1013,6 +1013,7 @@ class TranscriptPanel(QWidget):
         self._sidebar_anim = QPropertyAnimation(self, b"sidebarWidth", self)
         self._sidebar_anim.setDuration(220)
         self._sidebar_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._sidebar_anim.finished.connect(self._on_sidebar_anim_finished)
 
         sidebar_layout = QVBoxLayout(self.sidebar)
         sidebar_layout.setContentsMargins(8, 8, 8, 8)
@@ -1021,7 +1022,7 @@ class TranscriptPanel(QWidget):
         top_bar.setContentsMargins(2, 0, 2, 4)
         top_bar.setSpacing(2)
 
-        self.sidebar_toggle_btn = SidebarIconButton("\u2261", self.theme, "Thu gọn / Mở rộng thanh bên")
+        self.sidebar_toggle_btn = SidebarIconButton("\u2261", self.theme, "Thu gọn thanh bên")
         self.sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
         top_bar.addWidget(self.sidebar_toggle_btn)
 
@@ -1110,6 +1111,12 @@ class TranscriptPanel(QWidget):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(14, 0, 14, 0)
         header_layout.setSpacing(10)
+
+        # Persistent Top-Left Toggle Button (Shown ONLY when sidebar is 100% closed)
+        self.center_sidebar_toggle_btn = SidebarIconButton("\u2261", self.theme, "Mở thanh bên")
+        self.center_sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
+        self.center_sidebar_toggle_btn.hide()
+        header_layout.addWidget(self.center_sidebar_toggle_btn)
 
         # Active Session Title
         self.header_title_lbl = QLabel(self.session.display_title if self.session else "Phiên hiện tại")
@@ -1747,17 +1754,23 @@ class TranscriptPanel(QWidget):
         self._sidebar_anim.stop()
         curr_width = self.sidebar.width()
         if self._sidebar_expanded:
-            self._sidebar_anim.setStartValue(curr_width)
-            self._sidebar_anim.setEndValue(44)
             self._sidebar_expanded = False
             self.sessions_scroll.hide()
             self.action_new_btn.hide()
             self.action_artifacts_btn.hide()
             self.action_customize_btn.hide()
             self.search_toggle_btn.hide()
+            self.sidebar_toggle_btn.hide()
             if self.cross_search_input.isVisible():
                 self.cross_search_input.hide()
+            self.center_sidebar_toggle_btn.show()
+            self._sidebar_anim.setStartValue(curr_width)
+            self._sidebar_anim.setEndValue(0)
         else:
+            self._sidebar_expanded = True
+            self.center_sidebar_toggle_btn.hide()
+            self.sidebar.show()
+            self.sidebar_toggle_btn.show()
             self.sessions_scroll.show()
             self.action_new_btn.show()
             self.action_artifacts_btn.show()
@@ -1765,8 +1778,15 @@ class TranscriptPanel(QWidget):
             self.search_toggle_btn.show()
             self._sidebar_anim.setStartValue(curr_width)
             self._sidebar_anim.setEndValue(240)
-            self._sidebar_expanded = True
         self._sidebar_anim.start()
+
+    def _on_sidebar_anim_finished(self) -> None:
+        if not self._sidebar_expanded:
+            self.sidebar.hide()
+            self.sidebar.setFixedWidth(0)
+        else:
+            self.sidebar.show()
+            self.sidebar.setFixedWidth(240)
 
     def _toggle_search_box(self) -> None:
         if self.cross_search_input.isVisible():
