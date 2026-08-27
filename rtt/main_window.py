@@ -199,7 +199,7 @@ class MainWindow(QWidget):
         header_layout.setContentsMargins(16, 0, 12, 0)
         header_layout.setSpacing(12)
 
-        # App Brand & Status Pill
+        # App Brand
         brand_box = QFrame()
         brand_box.setStyleSheet("background: transparent; border: none;")
         brand_layout = QHBoxLayout(brand_box)
@@ -211,29 +211,6 @@ class MainWindow(QWidget):
         app_title.setStyleSheet(f"color: {self.theme.text}; border: none;")
         app_title.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         brand_layout.addWidget(app_title)
-
-        # Playful Pill Status Badge
-        pill_status = QFrame()
-        pill_status.setStyleSheet(f"""
-            QFrame {{
-                background-color: {self.theme.pill_bg};
-                border: 1.5px solid {self.theme.pill_border};
-                border-radius: 12px;
-            }}
-        """)
-        pill_layout = QHBoxLayout(pill_status)
-        pill_layout.setContentsMargins(8, 2, 10, 2)
-        pill_layout.setSpacing(6)
-
-        self.dot = PulsingDot(self.theme.accent)
-        self.dot.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        pill_layout.addWidget(self.dot)
-
-        status_lbl = QLabel("AI Offline")
-        status_lbl.setFont(font_ui(9, QFont.Weight.Bold))
-        status_lbl.setStyleSheet(f"color: {self.theme.pill_text}; border: none; background: transparent;")
-        pill_layout.addWidget(status_lbl)
-        brand_layout.addWidget(pill_status)
 
         header_layout.addWidget(brand_box)
         header_layout.addStretch(1)

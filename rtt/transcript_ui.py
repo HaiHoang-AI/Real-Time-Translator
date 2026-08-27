@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 
 from PySide6.QtCore import (
+    Property,
     QEasingCurve,
     QPropertyAnimation,
     QRect,
@@ -490,6 +491,8 @@ class ClaudeSessionItemWidget(QWidget):
         # Session Title
         title_text = self.info.get("title", f"Phiên {self.session_id}")
         self.title_lbl = QLabel(title_text)
+        self.title_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.title_lbl.setWordWrap(False)
         weight = QFont.Weight.DemiBold if self.is_active else QFont.Weight.Normal
         self.title_lbl.setFont(font_ui(9, weight))
         title_color = self.theme.text if self.is_active else self.theme.dim
@@ -996,24 +999,24 @@ class TranscriptPanel(QWidget):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # ── LEFT Sidebar (Collapsible, width: 240px) ─────────────────
+        # ── LEFT Sidebar (Collapsible, fixed width: 240px) ─────────────────
         self.sidebar = QFrame()
-        self.sidebar.setMinimumWidth(0)
-        self.sidebar.setMaximumWidth(240)
+        self.sidebar.setFixedWidth(240)
+        self.sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.sidebar.setStyleSheet(f"""
             QFrame {{
-                border-right: 1px solid {self.theme.border};
+                border-right: 1.5px solid {self.theme.border_strong};
                 background-color: {self.theme.bg};
             }}
         """)
         self._sidebar_expanded = True
-        self._sidebar_anim = QPropertyAnimation(self.sidebar, b"maximumWidth", self)
+        self._sidebar_anim = QPropertyAnimation(self, b"sidebarWidth", self)
         self._sidebar_anim.setDuration(220)
         self._sidebar_anim.setEasingCurve(QEasingCurve.OutCubic)
 
         sidebar_layout = QVBoxLayout(self.sidebar)
         sidebar_layout.setContentsMargins(8, 8, 8, 8)
-        # 1. Top Icon Action Bar (≡, 🔍)
+        # 1. Top Icon Action Bar (≡, ⌕)
         top_bar = QHBoxLayout()
         top_bar.setContentsMargins(2, 0, 2, 4)
         top_bar.setSpacing(2)
@@ -1063,6 +1066,7 @@ class TranscriptPanel(QWidget):
         # 4. Scrollable Container for Projects, Pinned, Chats
         self.sessions_scroll = QScrollArea()
         self.sessions_scroll.setWidgetResizable(True)
+        self.sessions_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.sessions_scroll.setFrameShape(QFrame.NoFrame)
         self.sessions_scroll.setStyleSheet(f"""
             QScrollArea {{
@@ -1090,10 +1094,11 @@ class TranscriptPanel(QWidget):
         self.sessions_scroll.setWidget(self.sessions_container)
         sidebar_layout.addWidget(self.sessions_scroll, 1)
 
-        body_layout.addWidget(self.sidebar)
+        body_layout.addWidget(self.sidebar, 0)
 
         # ── CENTER Content Area (Header + Scrollable Transcript) ─────
         self.right_wrapper = QWidget()
+        self.right_wrapper.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         right_layout = QVBoxLayout(self.right_wrapper)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
@@ -1105,11 +1110,6 @@ class TranscriptPanel(QWidget):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(14, 0, 14, 0)
         header_layout.setSpacing(10)
-
-        # Persistent Sidebar Toggle button
-        self.center_sidebar_toggle_btn = SidebarIconButton("\u2261", self.theme, "Mở / Thu gọn thanh bên")
-        self.center_sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
-        header_layout.addWidget(self.center_sidebar_toggle_btn)
 
         # Active Session Title
         self.header_title_lbl = QLabel(self.session.display_title if self.session else "Phiên hiện tại")
@@ -1438,9 +1438,8 @@ class TranscriptPanel(QWidget):
         self.rs_export_btn.clicked.connect(self.export_transcript)
         right_sidebar_layout.addWidget(self.rs_export_btn)
 
-        right_sidebar_layout.addStretch()
-
-        body_layout.addWidget(self.right_sidebar)
+        self.right_sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        body_layout.addWidget(self.right_sidebar, 0)
 
         # Smooth scrollbar animation
         vbar = self.scroll_area.verticalScrollBar()
@@ -1736,15 +1735,34 @@ class TranscriptPanel(QWidget):
         else:
             self._user_scrolled_up = True
 
+    def _get_sidebar_width(self) -> int:
+        return self.sidebar.width()
+
+    def _set_sidebar_width(self, w: int) -> None:
+        self.sidebar.setFixedWidth(w)
+
+    sidebarWidth = Property(int, _get_sidebar_width, _set_sidebar_width)
+
     def _toggle_sidebar(self) -> None:
         self._sidebar_anim.stop()
-        curr_width = self.sidebar.maximumWidth()
-        if self._sidebar_expanded or curr_width > 0:
+        curr_width = self.sidebar.width()
+        if self._sidebar_expanded:
             self._sidebar_anim.setStartValue(curr_width)
-            self._sidebar_anim.setEndValue(0)
+            self._sidebar_anim.setEndValue(44)
             self._sidebar_expanded = False
+            self.sessions_scroll.hide()
+            self.action_new_btn.hide()
+            self.action_artifacts_btn.hide()
+            self.action_customize_btn.hide()
+            self.search_toggle_btn.hide()
+            if self.cross_search_input.isVisible():
+                self.cross_search_input.hide()
         else:
-            self.sidebar.show()
+            self.sessions_scroll.show()
+            self.action_new_btn.show()
+            self.action_artifacts_btn.show()
+            self.action_customize_btn.show()
+            self.search_toggle_btn.show()
             self._sidebar_anim.setStartValue(curr_width)
             self._sidebar_anim.setEndValue(240)
             self._sidebar_expanded = True
