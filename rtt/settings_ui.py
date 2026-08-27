@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt, Signal, Property, QRect, QPoint, QSize, QRectF, Q
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QPainterPath, QFont, QLinearGradient
 
 try:
-    from rtt.theme import get_theme, ThemeColors, DARK, font_ui as _font_ui_str, font_mono as _font_mono_str
+    from rtt.theme import get_theme, apply_theme, ThemeColors, DARK, font_ui as _font_ui_str, font_mono as _font_mono_str
     from rtt.settings import AppSettings
     from rtt.motion import ElasticButton, HoverLiftFrame, PhysicsSlider
 
@@ -530,7 +530,7 @@ class DisplayTab(QWidget):
         btn_box = QHBoxLayout()
         btn_box.setSpacing(10)
 
-        self.test_btn = QPushButton("👁️ Hiện thử phụ đề (5s)")
+        self.test_btn = QPushButton("Hiện thử phụ đề (5s)")
         self.test_btn.setCursor(Qt.PointingHandCursor)
         self.test_btn.setStyleSheet(f"""
             QPushButton {{
@@ -550,7 +550,7 @@ class DisplayTab(QWidget):
         self.test_btn.clicked.connect(self._on_test_subtitle)
         btn_box.addWidget(self.test_btn)
 
-        self.reset_pos_btn = QPushButton("🔄 Đặt lại vị trí phụ đề")
+        self.reset_pos_btn = QPushButton("Đặt lại vị trí phụ đề")
         self.reset_pos_btn.setCursor(Qt.PointingHandCursor)
         self.reset_pos_btn.setStyleSheet(f"""
             QPushButton {{
@@ -766,7 +766,7 @@ class ModelTab(QWidget):
 
         self.stt_cards = {}
         stt_models_data = [
-            ("moonshine-medium", "moonshine medium (streaming)", "0.5 GB", "3.2%", "0.08", 95, "⚡ ĐỀ XUẤT • SIÊU NHANH"),
+            ("moonshine-medium", "moonshine medium (streaming)", "0.5 GB", "3.2%", "0.08", 95, "ĐỀ XUẤT • SIÊU NHANH"),
             ("large-v3-turbo", "faster-whisper large-v3-turbo", "1.5 GB", "4.0%", "0.40", 75, "Whisper Turbo"),
             ("moonshine-tiny", "moonshine tiny (streaming)", "0.1 GB", "8.5%", "0.03", 25, "cực nhẹ"),
             ("small", "faster-whisper small", "0.5 GB", "9.8%", "0.20", 30, "máy yếu"),
@@ -839,7 +839,7 @@ class ModelTab(QWidget):
 
         layout.addLayout(mt_layout)
 
-        # ⚡ Speed Mode Toggle
+        # Speed Mode Toggle
         speed_frame = QFrame()
         speed_frame.setStyleSheet(
             f"background-color: {theme.raised}; border-radius: 10px; "
@@ -848,17 +848,13 @@ class ModelTab(QWidget):
         speed_layout = QHBoxLayout(speed_frame)
         speed_layout.setContentsMargins(14, 10, 14, 10)
 
-        speed_icon = QLabel("⚡")
-        speed_icon.setStyleSheet("font-size: 22px; border: none;")
-        speed_layout.addWidget(speed_icon)
-
         speed_text_layout = QVBoxLayout()
         speed_text_layout.setSpacing(2)
-        speed_title = QLabel("Chế độ tốc độ cao")
+        speed_title = QLabel("Chế độ tốc độ cao (Speed Mode)")
         speed_title.setStyleSheet(
             f"color: {theme.text}; font-size: 14px; font-weight: bold; border: none;"
         )
-        speed_desc = QLabel("Whisper tiny + NLLB 600M + greedy — độ trễ ~0.5s, chất lượng thấp hơn")
+        speed_desc = QLabel("Whisper tiny + NLLB 600M + greedy — độ trễ ~0.5s, chất lượng cơ bản")
         speed_desc.setStyleSheet(f"color: {theme.dim}; font-size: 11px; border: none;")
         speed_text_layout.addWidget(speed_title)
         speed_text_layout.addWidget(speed_desc)
@@ -878,7 +874,7 @@ class ModelTab(QWidget):
         )
         layout.addWidget(self.summary)
 
-        notice = QLabel("⟳ Lưu ý: Thay đổi mô hình sẽ áp dụng hoàn toàn ở lần khởi động lại ứng dụng.")
+        notice = QLabel("Lưu ý: Thay đổi mô hình sẽ áp dụng hoàn toàn ở lần khởi động lại ứng dụng.")
         notice.setStyleSheet(f"color: {theme.dim}; font-size: 11px; font-style: italic;")
         layout.addWidget(notice)
 
@@ -939,7 +935,7 @@ class ModelTab(QWidget):
         # Update summary text
         if speed:
             self.summary.setText(
-                "⚡ Chế độ tốc độ cao: ~0.5s  (Whisper tiny + NLLB 600M + greedy) — nhanh nhất có thể!"
+                "Chế độ tốc độ cao: ~0.5s (Whisper tiny + NLLB 600M + greedy) — nhanh nhất có thể!"
             )
         else:
             if curr_stt in ("moonshine-tiny", "tiny-streaming"):
@@ -1337,10 +1333,10 @@ class Sidebar(QWidget):
         self.btn_group.setExclusive(True)
         
         tabs = [
-            ("🖥️  Hiển thị", 0),
-            ("🧠  Mô hình AI", 1),
-            ("🔊  Thuyết minh", 2),
-            ("✨  Tóm tắt AI", 3),
+            ("Hiển thị", 0),
+            ("Mô hình AI", 1),
+            ("Thuyết minh", 2),
+            ("Tóm tắt AI", 3),
         ]
         for label, idx in tabs:
             btn = ElasticButton(label)

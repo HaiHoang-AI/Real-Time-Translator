@@ -4,7 +4,7 @@ Features:
 - Left Sidebar with Claude-style minimal design (Pinned, Chats, bullet indicators).
 - Cross-session search across all past sessions and transcripts.
 - Multi-session selection for Gemini AI Summarization.
-- In-session pause/resume controls (❚❚ Tạm dừng / ▶ Tiếp tục).
+- In-session pause/resume controls (Tạm dừng / Tiếp tục).
 - Export to .srt, .txt, .md.
 """
 
@@ -816,7 +816,7 @@ class NewSessionDialog(QDialog):
 
         # Description / Tip
         tip_lbl = QLabel(
-            "💡 <b>Mẹo dịch chuẩn:</b> Nhập tên video, phim hoặc nội dung cuộc họp để mô hình AI "
+            "<b>Mẹo dịch chuẩn:</b> Nhập tên video, phim hoặc nội dung cuộc họp để mô hình AI "
             "hiểu đúng ngữ cảnh, tự động xưng hô chuẩn và dịch đúng thuật ngữ chuyên ngành."
         )
         tip_lbl.setWordWrap(True)
@@ -841,11 +841,11 @@ class NewSessionDialog(QDialog):
         chips_layout = QHBoxLayout()
         chips_layout.setSpacing(6)
         presets = [
-            ("🎬 Phim ảnh", "Phim điện ảnh / Phim dài tập"),
-            ("💼 Cuộc họp", "Cuộc họp công việc / Thảo luận dự án"),
-            ("💻 Công nghệ", "Lập trình / Công nghệ phần mềm"),
-            ("📚 Học tập", "Bài giảng học thuật / Khóa học"),
-            ("🎙️ Phỏng vấn", "Talkshow / Phỏng vấn"),
+            ("Phim ảnh", "Phim điện ảnh / Phim dài tập"),
+            ("Cuộc họp", "Cuộc họp công việc / Thảo luận dự án"),
+            ("Công nghệ", "Lập trình / Công nghệ phần mềm"),
+            ("Học tập", "Bài giảng học thuật / Khóa học"),
+            ("Phỏng vấn", "Talkshow / Phỏng vấn"),
         ]
         for label, full_text in presets:
             chip_btn = QPushButton(label)
@@ -1022,7 +1022,7 @@ class TranscriptPanel(QWidget):
         self.sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
         top_bar.addWidget(self.sidebar_toggle_btn)
 
-        self.search_toggle_btn = SidebarIconButton("\U0001F50D", self.theme, "Tìm kiếm phiên")
+        self.search_toggle_btn = SidebarIconButton("⌕", self.theme, "Tìm kiếm phiên")
         self.search_toggle_btn.clicked.connect(self._toggle_search_box)
         top_bar.addWidget(self.search_toggle_btn)
 
@@ -1030,16 +1030,16 @@ class TranscriptPanel(QWidget):
 
         sidebar_layout.addLayout(top_bar)
 
-        # 2. Action Items (+ New, Artifacts, Customize)
-        self.action_new_btn = SidebarActionItemWidget("+", "New", self.theme)
+        # 2. Action Items (+ New, Artifacts, Customize) - Pure Clean Typography, NO EMOJIS
+        self.action_new_btn = SidebarActionItemWidget("+", "Tạo phiên mới", self.theme)
         self.action_new_btn.clicked.connect(self._create_new_session)
         sidebar_layout.addWidget(self.action_new_btn)
 
-        self.action_artifacts_btn = SidebarActionItemWidget("🔮", "Tóm tắt phiên", self.theme)
+        self.action_artifacts_btn = SidebarActionItemWidget("", "Tóm tắt phiên", self.theme)
         self.action_artifacts_btn.clicked.connect(self._open_right_sidebar_and_export)
         sidebar_layout.addWidget(self.action_artifacts_btn)
 
-        self.action_customize_btn = SidebarActionItemWidget("🎛️", "Customize", self.theme)
+        self.action_customize_btn = SidebarActionItemWidget("", "Tùy chỉnh", self.theme)
         sidebar_layout.addWidget(self.action_customize_btn)
 
         # Collapsible Cross-session search box
@@ -1090,10 +1090,6 @@ class TranscriptPanel(QWidget):
         self.sessions_scroll.setWidget(self.sessions_container)
         sidebar_layout.addWidget(self.sessions_scroll, 1)
 
-        # 5. User Profile Footer Bar
-        self.sidebar_footer = SidebarFooterWidget("Hoàng-kun · Free", "H", self.theme)
-        sidebar_layout.addWidget(self.sidebar_footer)
-
         body_layout.addWidget(self.sidebar)
 
         # ── CENTER Content Area (Header + Scrollable Transcript) ─────
@@ -1134,7 +1130,7 @@ class TranscriptPanel(QWidget):
         header_layout.addWidget(self.meta_lbl)
 
         # Pause / Resume Button
-        self.pause_btn = ElasticButton("❚❚ Tạm dừng")
+        self.pause_btn = ElasticButton("Tạm dừng")
         self.pause_btn.setFont(font_ui(8.5, QFont.Weight.Bold))
         self.pause_btn.setFixedHeight(28)
         self.pause_btn.setCursor(Qt.PointingHandCursor)
@@ -1159,7 +1155,7 @@ class TranscriptPanel(QWidget):
 
         # In-Session Search
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 Tìm trong phiên...")
+        self.search_input.setPlaceholderText("Tìm trong phiên...")
         self.search_input.setFont(font_ui(8.5))
         self.search_input.setFixedWidth(145)
         self.search_input.setFixedHeight(28)
@@ -1179,7 +1175,7 @@ class TranscriptPanel(QWidget):
         header_layout.addWidget(self.search_input)
 
         # Export & AI Summary CTA button
-        self.export_btn = ElasticButton("🔮 Công cụ")
+        self.export_btn = ElasticButton("Công cụ")
         self.export_btn.setFont(font_ui(8.5, QFont.Weight.Bold))
         self.export_btn.setFixedHeight(28)
         self.export_btn.setCursor(Qt.PointingHandCursor)
@@ -1308,7 +1304,7 @@ class TranscriptPanel(QWidget):
         sum_desc.setWordWrap(True)
         right_sidebar_layout.addWidget(sum_desc)
 
-        self.summarize_btn = ElasticButton("✦  Tóm tắt AI")
+        self.summarize_btn = ElasticButton("Tóm tắt AI")
         self.summarize_btn.setFont(font_ui(8.5, QFont.Weight.DemiBold))
         self.summarize_btn.setFixedHeight(32)
         self.summarize_btn.setCursor(Qt.PointingHandCursor)
@@ -1530,7 +1526,7 @@ class TranscriptPanel(QWidget):
                 self._add_claude_session_item(s, active_sid)
 
         # 3. Chats Section
-        chats_header = SidebarSectionHeaderWidget("Chats", action_icon="🎛️", theme=self.theme)
+        chats_header = SidebarSectionHeaderWidget("Chats", action_icon="", theme=self.theme)
         self.sessions_layout.addWidget(chats_header)
 
         if chats_sessions:
@@ -1637,7 +1633,7 @@ class TranscriptPanel(QWidget):
                 }}
             """)
         else:
-            self.pause_btn.setText("❚❚ Tạm dừng")
+            self.pause_btn.setText("Tạm dừng")
             self.pause_btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {self.theme.raised};

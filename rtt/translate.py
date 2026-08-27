@@ -369,9 +369,9 @@ class GeminiTranslator:
         # Fallback to local NLLB 1.3B on any API error or empty response
         if self.fallback:
             if self._last_error == "429_quota":
-                self._notify("⚠️ Hết hạn ngạch Gemini (429) — Đang tự động dịch bằng NLLB 1.3B Offline")
+                self._notify("[Cảnh báo] Hết hạn ngạch Gemini (429) — Đang tự động dịch bằng NLLB 1.3B Offline")
             else:
-                self._notify("⚠️ Mất kết nối Gemini API — Đang tự động dịch bằng NLLB 1.3B Offline")
+                self._notify("[Cảnh báo] Mất kết nối Gemini API — Đang tự động dịch bằng NLLB 1.3B Offline")
 
             out = self.fallback.translate(
                 text, src, tgt, beam=beam, glossary=glossary,
@@ -554,7 +554,7 @@ class OllamaTranslator:
 
         # Fallback to local NLLB 1.3B on any Ollama error or empty response
         if self.fallback:
-            self._notify("⚠️ Không kết nối được Ollama — Đang tự động dịch bằng NLLB 1.3B Offline")
+            self._notify("[Cảnh báo] Không kết nối được Ollama — Đang tự động dịch bằng NLLB 1.3B Offline")
             out = self.fallback.translate(
                 text, src, tgt, beam=beam, glossary=glossary,
                 auto_lock_caps=auto_lock_caps, auto_lock_camel=auto_lock_camel

@@ -246,7 +246,7 @@ class Pipeline:
                     except queue.Empty:
                         break
                 if dropped:
-                    print(f"[mt] ⚡ dropped {dropped} stale item(s) — fast speech overflow")
+                    print(f"[mt] [speed] dropped {dropped} stale item(s) — fast speech overflow")
             self._mt_queue.put(text)
         else:
             self.bridge.committed_changed.emit(text)
@@ -373,7 +373,7 @@ class Pipeline:
             self.dub = DubPlayer(duck_level=duck_level, max_speed=max_speed)
             self.dub.start()
 
-        status_msg = "⚡ Chế độ tốc độ cao đã sẵn sàng!" if self._speed_mode else "🟢 Mô hình đã sẵn sàng dịch!"
+        status_msg = "Chế độ tốc độ cao đã sẵn sàng!" if self._speed_mode else "Mô hình đã sẵn sàng dịch!"
         self.bridge.status_changed.emit(status_msg)
         self._mt_ready.set()
         time.sleep(2.5)
