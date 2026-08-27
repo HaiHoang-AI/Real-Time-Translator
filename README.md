@@ -1,10 +1,5 @@
 # 🌐 Real-Time Translator (RTT)
 
-<div align="center">
-
-<img src="docs/images/hero_banner.png" alt="Real-Time Translator Hero Banner" width="100%">
-
-<br/>
 
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows%2011-0078d7.svg)
@@ -41,7 +36,7 @@
 * **Rolling Context Memory**: Tự động lưu 3–5 cặp câu thoại gần nhất, giúp AI duy trì tính mạch lạc trong toàn bộ cuộc hội thoại mà không làm chậm tốc độ dịch.
 
 <p align="center">
-  <img src="docs/images/context_summary.png" alt="Context Memory & AI Summary" width="90%">
+  <img src="docs/images/03_new_session_dialog.png" alt="Hộp thoại tạo phiên dịch với 5 tag gợi ý chủ đề" width="60%">
 </p>
 
 ### 4. 📝 Quản Lý Lịch Sử & Tóm Tắt Cuộc Họp Bằng AI
@@ -51,7 +46,7 @@
 * **Tìm Kiếm Toàn Cục (Cross-Session Search)**: Tra cứu nhanh mọi từ khóa đã từng được ghi lại trong quá khứ.
 
 <p align="center">
-  <img src="docs/images/ui_dashboard.png" alt="RTT Dashboard & Transcript View" width="90%">
+  <img src="docs/images/05_ui_transcript_light.png" alt="Giao diện Lịch sử & Tóm tắt AI - Light Theme" width="95%">
 </p>
 
 ### 5. 🗣️ Chế Độ Thuyết Minh Cabin Đè Tiếng Gốc (`--dub`)
@@ -61,7 +56,14 @@
 * Cửa sổ phụ đề trong suốt, không viền, luôn nổi trên cùng (**Always-on-Top**), cho phép xuyên chuột (**Click-through**) không cản trở làm việc hay chơi game.
 
 <p align="center">
-  <img src="docs/images/live_overlay.png" alt="Real-Time Subtitle Overlay in Action" width="90%">
+  <img src="docs/images/04_subtitle_overlay.png" alt="Giao diện Subtitle Overlay" width="90%">
+</p>
+
+### 7. ⚙️ Bảng Điều Khiển Cài Đặt Toàn Diện
+* Tùy chỉnh trực quan Model STT, lượng tử hóa CUDA INT8, Engine Dịch thuật, Giọng đọc Piper TTS và độ nhạy Ducking.
+
+<p align="center">
+  <img src="docs/images/02_ui_settings_dark.png" alt="Bảng Cài Đặt Mô Hình & Thiết Bị" width="95%">
 </p>
 
 ---
@@ -133,10 +135,6 @@ uv run python -m rtt.app --src en --tgt vi --console
 ---
 
 ## 🏗️ Kiến Trúc Hệ Thống
-
-<p align="center">
-  <img src="docs/images/system_architecture.png" alt="RTT System Architecture & Pipeline" width="100%">
-</p>
 
 ```
                      ┌───────────────────────────┐
