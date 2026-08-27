@@ -150,7 +150,8 @@ class MainWindow(QWidget):
 
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setMinimumSize(680, 500)
+        self.setMinimumSize(880, 620)
+        self.resize(1180, 800)
         self.setMouseTracking(True)
         self._resize_edge = "none"
 

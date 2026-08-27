@@ -919,6 +919,48 @@ class NewSessionDialog(QDialog):
         return self.input_field.text().strip()
 
 
+class SidebarResizeHandle(QWidget):
+    """Draggable vertical bar for freely resizing the sidebar width."""
+
+    def __init__(self, target_sidebar: QWidget, panel: 'TranscriptPanel', parent=None):
+        super().__init__(parent)
+        self.sidebar = target_sidebar
+        self.panel = panel
+        self.setFixedWidth(5)
+        self.setCursor(Qt.SplitHCursor)
+        self._dragging = False
+        self._drag_start_x = 0
+        self._start_width = 240
+        self.setStyleSheet(f"""
+            SidebarResizeHandle {{
+                background-color: transparent;
+            }}
+            SidebarResizeHandle:hover {{
+                background-color: {self.panel.theme.accent};
+            }}
+        """)
+
+    def mousePressEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self._dragging = True
+            self._drag_start_x = event.globalPosition().toPoint().x()
+            self._start_width = self.sidebar.width()
+            event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent):
+        if self._dragging:
+            delta = event.globalPosition().toPoint().x() - self._drag_start_x
+            new_w = max(180, min(520, self._start_width + delta))
+            self.sidebar.setFixedWidth(new_w)
+            self.panel._saved_sidebar_width = new_w
+            event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        if event.button() == Qt.LeftButton:
+            self._dragging = False
+            event.accept()
+
+
 # ───────────────────────────────────── Main Panel Widget ──────────────
 
 class TranscriptPanel(QWidget):
@@ -933,6 +975,7 @@ class TranscriptPanel(QWidget):
         super().__init__(parent)
         self.settings = settings
         self.theme = get_theme(settings.data.ui.theme if settings else "dark")
+        self._saved_sidebar_width = 240
 
         # Support both SessionManager and TranscriptSession
         if isinstance(session_mgr_or_session, SessionManager):
@@ -998,9 +1041,9 @@ class TranscriptPanel(QWidget):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # ── LEFT Sidebar (Collapsible, fixed width: 240px) ─────────────────
+        # ── LEFT Sidebar (Collapsible, resizable width: default 240px) ─────
         self.sidebar = QFrame()
-        self.sidebar.setFixedWidth(240)
+        self.sidebar.setFixedWidth(self._saved_sidebar_width)
         self.sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.sidebar.setStyleSheet(f"""
             QFrame {{
@@ -1095,6 +1138,10 @@ class TranscriptPanel(QWidget):
         sidebar_layout.addWidget(self.sessions_scroll, 1)
 
         body_layout.addWidget(self.sidebar, 0)
+
+        # Draggable Sidebar Resize Handle
+        self.resize_handle = SidebarResizeHandle(self.sidebar, self)
+        body_layout.addWidget(self.resize_handle, 0)
 
         # ── CENTER Content Area (Header + Scrollable Transcript) ─────
         self.right_wrapper = QWidget()
@@ -1720,7 +1767,11 @@ class TranscriptPanel(QWidget):
         self._sidebar_anim.stop()
         curr_width = self.sidebar.width()
         if self._sidebar_expanded:
+            if curr_width >= 180:
+                self._saved_sidebar_width = curr_width
             self._sidebar_expanded = False
+            if hasattr(self, "resize_handle"):
+                self.resize_handle.hide()
             self.sessions_scroll.hide()
             self.action_new_btn.hide()
             self.action_artifacts_btn.hide()
@@ -1736,23 +1787,31 @@ class TranscriptPanel(QWidget):
             self._sidebar_expanded = True
             self.center_sidebar_toggle_btn.hide()
             self.sidebar.show()
+            if hasattr(self, "resize_handle"):
+                self.resize_handle.show()
             self.sidebar_toggle_btn.show()
             self.sessions_scroll.show()
             self.action_new_btn.show()
             self.action_artifacts_btn.show()
             self.action_customize_btn.show()
             self.search_toggle_btn.show()
+            target_w = getattr(self, "_saved_sidebar_width", 240)
             self._sidebar_anim.setStartValue(curr_width)
-            self._sidebar_anim.setEndValue(240)
+            self._sidebar_anim.setEndValue(target_w)
         self._sidebar_anim.start()
 
     def _on_sidebar_anim_finished(self) -> None:
         if not self._sidebar_expanded:
             self.sidebar.hide()
+            if hasattr(self, "resize_handle"):
+                self.resize_handle.hide()
             self.sidebar.setFixedWidth(0)
         else:
             self.sidebar.show()
-            self.sidebar.setFixedWidth(240)
+            if hasattr(self, "resize_handle"):
+                self.resize_handle.show()
+            target_w = getattr(self, "_saved_sidebar_width", 240)
+            self.sidebar.setFixedWidth(target_w)
 
     def _toggle_search_box(self) -> None:
         if self.cross_search_input.isVisible():

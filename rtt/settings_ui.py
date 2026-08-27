@@ -19,20 +19,30 @@ try:
     from rtt.settings import AppSettings
     from rtt.motion import ElasticButton, HoverLiftFrame, PhysicsSlider
 
-    def font_ui(weight=400):
+    def font_ui(point_size: float = 9.5, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
         f = QFont(_font_ui_str())
+        if isinstance(point_size, (int, float)):
+            if point_size >= 100:
+                weight = QFont.Weight(min(900, max(100, int(point_size))))
+                point_size = 9.5
+            f.setPointSizeF(float(point_size))
         if isinstance(weight, QFont.Weight):
             f.setWeight(weight)
         elif isinstance(weight, int):
-            f.setWeight(QFont.Weight(min(99, max(1, weight * 10 if weight <= 9 else weight))))
+            f.setWeight(QFont.Weight(min(900, max(100, weight if weight >= 100 else weight * 100))))
         return f
 
-    def font_mono(weight=400):
+    def font_mono(point_size: float = 9.5, weight: QFont.Weight = QFont.Weight.Normal) -> QFont:
         f = QFont(_font_mono_str())
+        if isinstance(point_size, (int, float)):
+            if point_size >= 100:
+                weight = QFont.Weight(min(900, max(100, int(point_size))))
+                point_size = 9.5
+            f.setPointSizeF(float(point_size))
         if isinstance(weight, QFont.Weight):
             f.setWeight(weight)
         elif isinstance(weight, int):
-            f.setWeight(QFont.Weight(min(99, max(1, weight * 10 if weight <= 9 else weight))))
+            f.setWeight(QFont.Weight(min(900, max(100, weight if weight >= 100 else weight * 100))))
         return f
 
 except ImportError:
@@ -323,28 +333,28 @@ class DisplayTab(QWidget):
         self.bridge = bridge
         self.setMinimumHeight(480)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(20)
+        layout.setContentsMargins(20, 16, 20, 20)
+        layout.setSpacing(14)
         
         # Preview Box
         self.preview_box = QWidget()
-        self.preview_box.setFixedHeight(120)
+        self.preview_box.setFixedHeight(85)
         preview_layout = QVBoxLayout(self.preview_box)
+        preview_layout.setContentsMargins(0, 0, 0, 0)
         preview_layout.setAlignment(Qt.AlignCenter)
         
         self.preview_card = QFrame()
-        self.preview_card.setStyleSheet(f"background-color: {theme.surface}; border-radius: 8px;")
+        self.preview_card.setStyleSheet(f"background-color: {theme.surface}; border: 1px solid {theme.border}; border-radius: 8px;")
         card_layout = QVBoxLayout(self.preview_card)
-        card_layout.setContentsMargins(16, 12, 16, 12)
+        card_layout.setContentsMargins(14, 8, 14, 8)
+        card_layout.setSpacing(4)
         
         self.src_lbl = QLabel("We call that gap the ear-voice span.")
-        f_src = font_ui(400)
-        f_src.setPixelSize(11)
-        self.src_lbl.setFont(f_src)
+        self.src_lbl.setFont(font_ui(8.5))
         self.src_lbl.setStyleSheet(f"color: {theme.teal};")
         
         self.tgt_lbl = QLabel("Khoảng cách đó gọi là ear-voice span.")
-        self.f_tgt = font_ui(500)
+        self.f_tgt = font_ui(9.5, QFont.Weight.Medium)
         self.tgt_lbl.setFont(self.f_tgt)
         self.tgt_lbl.setStyleSheet(f"color: {theme.text};")
         
@@ -384,7 +394,7 @@ class DisplayTab(QWidget):
         lang_box.setStyleSheet(f"""
             QFrame#LangBox {{
                 background-color: {theme.raised};
-                border: 1.5px solid {theme.border_strong};
+                border: 1px solid {theme.border};
                 border-radius: 12px;
             }}
             QLabel {{
@@ -398,13 +408,13 @@ class DisplayTab(QWidget):
             }}
         """)
         lang_layout = QVBoxLayout(lang_box)
-        lang_layout.setContentsMargins(14, 12, 14, 12)
+        lang_layout.setContentsMargins(14, 10, 14, 10)
         lang_layout.setSpacing(10)
 
         # Input Language (Source)
         src_lang_layout = QHBoxLayout()
         src_lang_lbl = QLabel("Ngôn ngữ đầu vào (Nói)")
-        src_lang_lbl.setFont(font_ui(600))
+        src_lang_lbl.setFont(font_ui(9.5, QFont.Weight.DemiBold))
         src_lang_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; background: transparent; border: none; padding: 0; margin: 0;")
         
         self.src_lang_cb = QComboBox()
@@ -465,7 +475,7 @@ class DisplayTab(QWidget):
         # Output Language (Target)
         tgt_lang_layout = QHBoxLayout()
         tgt_lang_lbl = QLabel("Ngôn ngữ đầu ra (Dịch)")
-        tgt_lang_lbl.setFont(font_ui(600))
+        tgt_lang_lbl.setFont(font_ui(9.5, QFont.Weight.DemiBold))
         tgt_lang_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; background: transparent; border: none; padding: 0; margin: 0;")
         
         self.tgt_lang_cb = QComboBox()
