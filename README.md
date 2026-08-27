@@ -2,6 +2,10 @@
 
 <div align="center">
 
+<img src="docs/images/hero_banner.png" alt="Real-Time Translator Hero Banner" width="100%">
+
+<br/>
+
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Windows%2011-0078d7.svg)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
@@ -36,17 +40,29 @@
 * **5 Tag Gợi Ý 1-Chạm**: 🎬 *Phim ảnh*, 💼 *Cuộc họp*, 💻 *Công nghệ / IT*, 📚 *Học tập*, 🎙️ *Phỏng vấn*.
 * **Rolling Context Memory**: Tự động lưu 3–5 cặp câu thoại gần nhất, giúp AI duy trì tính mạch lạc trong toàn bộ cuộc hội thoại mà không làm chậm tốc độ dịch.
 
+<p align="center">
+  <img src="docs/images/context_summary.png" alt="Context Memory & AI Summary" width="90%">
+</p>
+
 ### 4. 📝 Quản Lý Lịch Sử & Tóm Tắt Cuộc Họp Bằng AI
 * **Giao diện Claude / Linear Style**: Thiết kế tối giản, hiện đại với Dark Mode và Light Mode cao cấp.
 * **Tóm Tắt Bằng AI (Gemini AI Summary)**: Chọn một hoặc nhiều phiên thoại để AI tự động tổng hợp nội dung chính, ý kiến thảo luận và việc cần làm (Action Items).
 * **Xuất File Đa Định Dạng**: Xuất trọn bộ phụ đề sang `.srt`, `.txt`, `.md` chỉ với 1 cú nhấp chuột.
 * **Tìm Kiếm Toàn Cục (Cross-Session Search)**: Tra cứu nhanh mọi từ khóa đã từng được ghi lại trong quá khứ.
 
+<p align="center">
+  <img src="docs/images/ui_dashboard.png" alt="RTT Dashboard & Transcript View" width="90%">
+</p>
+
 ### 5. 🗣️ Chế Độ Thuyết Minh Cabin Đè Tiếng Gốc (`--dub`)
 * **Piper TTS tiếng Việt**: Giọng đọc tự nhiên, tự động giảm nhỏ âm lượng ứng dụng khác (**Auto-Ducking**) và tự động tăng tốc đọc nhịp nhàng khi câu thoại dồn dập.
 
 ### 6. 🖥️ Subtitle Overlay Hiện Đại
 * Cửa sổ phụ đề trong suốt, không viền, luôn nổi trên cùng (**Always-on-Top**), cho phép xuyên chuột (**Click-through**) không cản trở làm việc hay chơi game.
+
+<p align="center">
+  <img src="docs/images/live_overlay.png" alt="Real-Time Subtitle Overlay in Action" width="90%">
+</p>
 
 ---
 
@@ -117,6 +133,10 @@ uv run python -m rtt.app --src en --tgt vi --console
 ---
 
 ## 🏗️ Kiến Trúc Hệ Thống
+
+<p align="center">
+  <img src="docs/images/system_architecture.png" alt="RTT System Architecture & Pipeline" width="100%">
+</p>
 
 ```
                      ┌───────────────────────────┐

@@ -1076,7 +1076,7 @@ class TranscriptPanel(QWidget):
 
         sidebar_layout.addLayout(top_bar)
 
-        # 2. Action Items (+ New, Artifacts) - Pure Clean Typography, NO EMOJIS
+        # 2. Action Items (+ New, Artifacts, Customize) - Pure Clean Typography, NO EMOJIS
         self.action_new_btn = SidebarActionItemWidget("+", "Tạo phiên mới", self.theme)
         self.action_new_btn.clicked.connect(self._create_new_session)
         sidebar_layout.addWidget(self.action_new_btn)
@@ -1084,6 +1084,9 @@ class TranscriptPanel(QWidget):
         self.action_artifacts_btn = SidebarActionItemWidget("", "Tóm tắt phiên", self.theme)
         self.action_artifacts_btn.clicked.connect(self._open_right_sidebar_and_export)
         sidebar_layout.addWidget(self.action_artifacts_btn)
+
+        self.action_customize_btn = SidebarActionItemWidget("", "Tùy chỉnh", self.theme)
+        sidebar_layout.addWidget(self.action_customize_btn)
 
         # Collapsible Cross-session search box
         self.cross_search_input = QLineEdit()
@@ -1772,6 +1775,7 @@ class TranscriptPanel(QWidget):
             self.sessions_scroll.hide()
             self.action_new_btn.hide()
             self.action_artifacts_btn.hide()
+            self.action_customize_btn.hide()
             self.search_toggle_btn.hide()
             self.sidebar_toggle_btn.hide()
             if self.cross_search_input.isVisible():
@@ -1789,6 +1793,7 @@ class TranscriptPanel(QWidget):
             self.sessions_scroll.show()
             self.action_new_btn.show()
             self.action_artifacts_btn.show()
+            self.action_customize_btn.show()
             self.search_toggle_btn.show()
             target_w = getattr(self, "_saved_sidebar_width", 240)
             self._sidebar_anim.setStartValue(curr_width)
