@@ -183,7 +183,7 @@ QWidget {{
 
 QWidget#CentralContainer {{
     background-color: {theme.surface};
-    border: 2px solid {theme.border_chunky};
+    border: none;
     border-radius: 18px;
 }}
 

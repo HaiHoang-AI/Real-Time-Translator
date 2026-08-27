@@ -1124,7 +1124,9 @@ class TranscriptPanel(QWidget):
         self.header_title_lbl.setStyleSheet(f"color: {self.theme.text}; border: none;")
         header_layout.addWidget(self.header_title_lbl)
 
-        # Pause / Resume Button
+        header_layout.addStretch(1)
+
+        # Pause / Resume Button (placed right next to search box)
         self.pause_btn = ElasticButton("Tạm dừng")
         self.pause_btn.setFont(font_ui(8.5, QFont.Weight.Bold))
         self.pause_btn.setFixedHeight(28)
@@ -1145,8 +1147,6 @@ class TranscriptPanel(QWidget):
         """)
         self.pause_btn.clicked.connect(self._toggle_pause)
         header_layout.addWidget(self.pause_btn)
-
-        header_layout.addStretch(1)
 
         # In-Session Search
         self.search_input = QLineEdit()

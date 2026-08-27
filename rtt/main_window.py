@@ -183,7 +183,7 @@ class MainWindow(QWidget):
             QFrame#CentralContainer {{
                 background-color: {self.theme.surface};
                 border-radius: 18px;
-                border: 2px solid {self.theme.border_chunky};
+                border: none;
             }}
         """)
         container_layout = QVBoxLayout(self.container)
