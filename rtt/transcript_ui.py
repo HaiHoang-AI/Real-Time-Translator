@@ -1124,18 +1124,6 @@ class TranscriptPanel(QWidget):
         self.header_title_lbl.setStyleSheet(f"color: {self.theme.text}; border: none;")
         header_layout.addWidget(self.header_title_lbl)
 
-        # Metadata pill label
-        self.meta_lbl = QLabel("00:00 · 0 câu · AUTO → VI")
-        self.meta_lbl.setFont(font_mono(8.5, QFont.Weight.Medium))
-        self.meta_lbl.setStyleSheet(f"""
-            background-color: {self.theme.raised};
-            color: {self.theme.dim};
-            border: 1px solid {self.theme.border};
-            border-radius: 8px;
-            padding: 3px 8px;
-        """)
-        header_layout.addWidget(self.meta_lbl)
-
         # Pause / Resume Button
         self.pause_btn = ElasticButton("Tạm dừng")
         self.pause_btn.setFont(font_ui(8.5, QFont.Weight.Bold))
@@ -1164,7 +1152,7 @@ class TranscriptPanel(QWidget):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Tìm trong phiên...")
         self.search_input.setFont(font_ui(8.5))
-        self.search_input.setFixedWidth(145)
+        self.search_input.setFixedWidth(160)
         self.search_input.setFixedHeight(28)
         self.search_input.setStyleSheet(f"""
             QLineEdit {{
@@ -1180,27 +1168,6 @@ class TranscriptPanel(QWidget):
         """)
         self.search_input.textChanged.connect(self.filter_entries)
         header_layout.addWidget(self.search_input)
-
-        # Export & AI Summary CTA button
-        self.export_btn = ElasticButton("Công cụ")
-        self.export_btn.setFont(font_ui(8.5, QFont.Weight.Bold))
-        self.export_btn.setFixedHeight(28)
-        self.export_btn.setCursor(Qt.PointingHandCursor)
-        self.export_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {self.theme.cta_bg};
-                color: {self.theme.cta_text};
-                border: 1.5px solid {self.theme.border_chunky};
-                border-radius: 8px;
-                padding: 0 12px;
-                font-weight: 700;
-            }}
-            QPushButton:hover {{
-                background-color: {self.theme.cta_hover};
-            }}
-        """)
-        self.export_btn.clicked.connect(self._open_right_sidebar_and_export)
-        header_layout.addWidget(self.export_btn)
 
         right_layout.addWidget(header)
 
@@ -1897,10 +1864,6 @@ class TranscriptPanel(QWidget):
         src_code = getattr(self.settings.data.ui, 'src_lang', 'auto') if (self.settings and hasattr(self.settings, 'data')) else getattr(self.session, 'src_lang', 'EN')
         tgt_code = getattr(self.settings.data.ui, 'tgt_lang', 'vi') if (self.settings and hasattr(self.settings, 'data')) else getattr(self.session, 'tgt_lang', 'VI')
 
-        src = "AUTO" if src_code == "auto" else src_code.upper()
-        tgt = tgt_code.upper()
-
-        self.meta_lbl.setText(f"{mins:02d}:{secs:02d} · {count} câu · {src} → {tgt}")
         self.header_title_lbl.setText(self.session.display_title)
 
     def filter_entries(self, text: str) -> None:

@@ -380,14 +380,32 @@ class DisplayTab(QWidget):
 
         # ── Language Selection Controls ──────────────────────────────
         lang_box = QFrame()
-        lang_box.setStyleSheet(f"background-color: {theme.raised}; border-radius: 10px; padding: 10px 14px;")
+        lang_box.setObjectName("LangBox")
+        lang_box.setStyleSheet(f"""
+            QFrame#LangBox {{
+                background-color: {theme.raised};
+                border: 1.5px solid {theme.border_strong};
+                border-radius: 12px;
+            }}
+            QLabel {{
+                background: transparent;
+                border: none;
+                padding: 0px;
+                margin: 0px;
+                color: {theme.text};
+                font-size: 13px;
+                font-weight: 600;
+            }}
+        """)
         lang_layout = QVBoxLayout(lang_box)
+        lang_layout.setContentsMargins(14, 12, 14, 12)
         lang_layout.setSpacing(10)
 
         # Input Language (Source)
         src_lang_layout = QHBoxLayout()
         src_lang_lbl = QLabel("Ngôn ngữ đầu vào (Nói)")
-        src_lang_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; font-weight: 500;")
+        src_lang_lbl.setFont(font_ui(600))
+        src_lang_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; background: transparent; border: none; padding: 0; margin: 0;")
         
         self.src_lang_cb = QComboBox()
         self.src_lang_cb.setItemDelegate(QStyledItemDelegate(self.src_lang_cb))
@@ -447,7 +465,8 @@ class DisplayTab(QWidget):
         # Output Language (Target)
         tgt_lang_layout = QHBoxLayout()
         tgt_lang_lbl = QLabel("Ngôn ngữ đầu ra (Dịch)")
-        tgt_lang_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; font-weight: 500;")
+        tgt_lang_lbl.setFont(font_ui(600))
+        tgt_lang_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; background: transparent; border: none; padding: 0; margin: 0;")
         
         self.tgt_lang_cb = QComboBox()
         self.tgt_lang_cb.setItemDelegate(QStyledItemDelegate(self.tgt_lang_cb))
