@@ -132,7 +132,7 @@ class ToggleSwitch(QCheckBox):
         path.addRoundedRect(rect, 11, 11)
 
         off_col = QColor(self.theme.raised)
-        on_col = QColor(self.theme.teal)
+        on_col = QColor(self.theme.accent)
         bg_r = off_col.red() + (on_col.red() - off_col.red()) * self._thumb_pos
         bg_g = off_col.green() + (on_col.green() - off_col.green()) * self._thumb_pos
         bg_b = off_col.blue() + (on_col.blue() - off_col.blue()) * self._thumb_pos
@@ -140,8 +140,8 @@ class ToggleSwitch(QCheckBox):
 
         painter.fillPath(path, bg_col)
 
-        pen = QPen(QColor(self.theme.border))
-        pen.setWidthF(1.0)
+        pen = QPen(QColor(self.theme.border_strong))
+        pen.setWidthF(1.2)
         painter.setPen(pen)
         painter.drawPath(path)
 
@@ -153,7 +153,7 @@ class ToggleSwitch(QCheckBox):
         thumb_path = QPainterPath()
         thumb_path.addRoundedRect(thumb_rect, 8, 8)
         painter.setPen(Qt.NoPen)
-        painter.fillPath(thumb_path, QColor(self.theme.text))
+        painter.fillPath(thumb_path, QColor("#FFFFFF" if self._thumb_pos > 0.5 else self.theme.text))
         painter.end()
 
 
@@ -164,10 +164,10 @@ class SegmentControl(QWidget):
         super().__init__(parent)
         self.theme = theme
         self.options = options
-        self.setFixedHeight(32)
+        self.setFixedHeight(34)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setSpacing(2)
+        layout.setContentsMargins(3, 3, 3, 3)
+        layout.setSpacing(3)
         
         self.buttons = []
         self.btn_group = QButtonGroup(self)
@@ -176,18 +176,22 @@ class SegmentControl(QWidget):
         self.setStyleSheet(f"""
             SegmentControl {{
                 background-color: {theme.raised};
-                border-radius: 8px;
+                border: 1.5px solid {theme.border_strong};
+                border-radius: 10px;
             }}
             QPushButton {{
                 background-color: transparent;
-                border: none;
-                border-radius: 6px;
+                border: 1px solid transparent;
+                border-radius: 7px;
                 color: {theme.dim};
                 padding: 4px 12px;
+                font-weight: 600;
             }}
             QPushButton:checked {{
-                background-color: {theme.surface};
-                color: {theme.text};
+                background-color: {theme.accent};
+                color: {theme.accent_text};
+                border: 1px solid {theme.border_chunky};
+                font-weight: 700;
             }}
         """)
         
@@ -1325,41 +1329,49 @@ class Sidebar(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 24, 16, 24)
         
-        title = QLabel("Cài đặt")
-        title.setStyleSheet(f"color: {theme.text}; font-size: 16px; font-weight: 600; margin-bottom: 12px;")
+        title = QLabel("Cài đặt hệ thống")
+        title.setStyleSheet(f"color: {theme.text}; font-size: 15px; font-weight: 700; margin-bottom: 8px;")
         layout.addWidget(title)
         
         self.btn_group = QButtonGroup(self)
         self.btn_group.setExclusive(True)
         
-        tabs = ["Hiển thị", "Model", "DUB / Cabin", "Tóm tắt AI"]
-        for i, t in enumerate(tabs):
-            btn = ElasticButton(t)
+        tabs = [
+            ("🖥️  Hiển thị", 0),
+            ("🧠  Mô hình AI", 1),
+            ("🔊  Thuyết minh", 2),
+            ("✨  Tóm tắt AI", 3),
+        ]
+        for label, idx in tabs:
+            btn = ElasticButton(label)
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
+            btn.setFont(font_ui(600))
             btn.setStyleSheet(f"""
                 QPushButton {{
                     text-align: left;
                     padding: 8px 12px;
-                    border-radius: 8px;
+                    border-radius: 9px;
                     color: {theme.dim};
                     background: transparent;
-                    font-size: 13px;
-                    border: 1px solid transparent;
+                    font-size: 12.5px;
+                    border: 1.5px solid transparent;
                 }}
                 QPushButton:hover {{
                     background: {theme.raised};
+                    color: {theme.text};
                 }}
                 QPushButton:checked {{
                     background: {theme.raised};
-                    color: {theme.text};
-                    border: 1px solid {theme.border};
-                    font-weight: 500;
+                    color: {theme.accent};
+                    border: 1.5px solid {theme.accent};
+                    font-weight: 700;
                 }}
             """)
-            self.btn_group.addButton(btn, i)
+            self.btn_group.addButton(btn, idx)
             layout.addWidget(btn)
-            if i == 0: btn.setChecked(True)
+            if idx == 0:
+                btn.setChecked(True)
             
         self.btn_group.buttonClicked.connect(self._on_tab_click)
         
@@ -1440,73 +1452,9 @@ class SettingsWindow(QWidget):
         self.resize(680, 560)
         
         main_layout = QHBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setContentsMargins(10, 10, 10, 10)
         self.panel = SettingsPanel(settings, self)
         main_layout.addWidget(self.panel)
-
-        # Top Header Bar with Window Control Buttons (Minimize, Maximize, Close)
-        win_control_bar = QWidget()
-        win_control_bar.setFixedHeight(36)
-        ctrl_layout = QHBoxLayout(win_control_bar)
-        ctrl_layout.setContentsMargins(0, 4, 12, 0)
-        ctrl_layout.setSpacing(6)
-        ctrl_layout.addStretch(1)
-
-        _wc_qss = lambda fsize="16px", ha="0.22", hc="#E8A878": f"""
-            QPushButton {{
-                background: transparent;
-                color: #C4885A;
-                border: none;
-                border-radius: 6px;
-                font-family: 'Segoe UI', 'Segoe UI Symbol', Arial, sans-serif;
-                font-size: {fsize};
-                font-weight: bold;
-                padding: 0;
-            }}
-            QPushButton:hover {{
-                background-color: rgba(196, 136, 90, {ha});
-                color: {hc};
-            }}
-        """
-
-        btn_min = QPushButton("─")
-        btn_min.setFixedSize(36, 30)
-        btn_min.setStyleSheet(_wc_qss("18px", "0.22", "#E8A878"))
-        btn_min.clicked.connect(self.showMinimized)
-        ctrl_layout.addWidget(btn_min)
-
-        btn_max = QPushButton("□")
-        btn_max.setFixedSize(36, 30)
-        btn_max.setStyleSheet(_wc_qss("16px", "0.22", "#E8A878"))
-        btn_max.clicked.connect(self._toggle_maximize)
-        ctrl_layout.addWidget(btn_max)
-
-        btn_close = QPushButton("✕")
-        btn_close.setFixedSize(36, 30)
-        btn_close.setStyleSheet(_wc_qss("17px", "0.35", "#F0B88A"))
-        btn_close.clicked.connect(self.close)
-        ctrl_layout.addWidget(btn_close)
-
-        content_layout.addWidget(win_control_bar)
-        
-        self.stack = QStackedWidget()
-        self.stack.addWidget(make_scrollable_tab(DisplayTab(self.theme, self.settings), self.theme))
-        self.stack.addWidget(make_scrollable_tab(ModelTab(self.theme, self.settings), self.theme))
-        self.stack.addWidget(make_scrollable_tab(DubTab(self.theme, self.settings), self.theme))
-        
-        content_layout.addWidget(self.stack, 1)
-
-        # QSizeGrip at bottom-right corner for smooth resizing
-        grip_layout = QHBoxLayout()
-        grip_layout.setContentsMargins(0, 0, 4, 4)
-        grip_layout.addStretch(1)
-        grip = QSizeGrip(self)
-        grip.setFixedSize(14, 14)
-        grip_layout.addWidget(grip)
-        content_layout.addLayout(grip_layout)
-        
-        main_layout.addWidget(self.sidebar)
-        main_layout.addWidget(self.content_area, 1)
         
         self._drag_pos = None
 

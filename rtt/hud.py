@@ -91,15 +91,16 @@ class SegmentedControl(QFrame):
         self.setStyleSheet(f"""
             SegmentedControl {{
                 background-color: {theme.raised};
-                border: 1px solid {theme.border};
+                border: 1.5px solid {theme.border_strong};
                 border-radius: 10px;
             }}
             QPushButton {{
-                border: none;
-                padding: 8px 0px;
+                border: 1px solid transparent;
+                padding: 7px 0px;
                 border-radius: 7px;
                 font-family: "{font_ui()}";
-                font-size: 13px;
+                font-size: 12.5px;
+                font-weight: 600;
                 color: {theme.dim};
             }}
         """)
@@ -112,7 +113,9 @@ class SegmentedControl(QFrame):
                     QPushButton {{
                         background-color: {self._theme.accent};
                         color: {self._theme.accent_text};
-                        font-weight: 600;
+                        border: 1.5px solid {self._theme.border_chunky};
+                        border-radius: 7px;
+                        font-weight: 700;
                     }}
                 """)
             else:
@@ -120,7 +123,9 @@ class SegmentedControl(QFrame):
                     QPushButton {{
                         background-color: transparent;
                         color: {self._theme.dim};
-                        font-weight: 400;
+                        border: 1px solid transparent;
+                        border-radius: 7px;
+                        font-weight: 600;
                     }}
                 """)
 
@@ -139,15 +144,16 @@ class ThemeSwitcher(SegmentedControl):
         self.setStyleSheet(f"""
             ThemeSwitcher {{
                 background-color: {theme.raised};
-                border: 1px solid {theme.border};
-                border-radius: 8px;
+                border: 1.5px solid {theme.border_strong};
+                border-radius: 9px;
             }}
             QPushButton {{
-                border: none;
+                border: 1px solid transparent;
                 padding: 4px 9px;
                 border-radius: 6px;
                 font-family: "{font_ui()}";
                 font-size: 11px;
+                font-weight: 600;
                 color: {theme.dim};
             }}
         """)
@@ -158,37 +164,32 @@ class ThemeSwitcher(SegmentedControl):
             if i == self.active_idx:
                 btn.setStyleSheet(f"""
                     QPushButton {{
-                        background-color: {self._theme.surface};
-                        border: 1px solid {self._theme.border};
-                        color: {self._theme.text};
-                        font-weight: 500;
+                        background-color: {self._theme.accent};
+                        color: {self._theme.accent_text};
+                        border: 1px solid {self._theme.border_chunky};
+                        border-radius: 6px;
+                        font-weight: 700;
                     }}
                 """)
             else:
                 btn.setStyleSheet(f"""
                     QPushButton {{
                         background-color: transparent;
-                        border: none;
                         color: {self._theme.dim};
-                        font-weight: 400;
+                        border: 1px solid transparent;
+                        font-weight: 500;
                     }}
                 """)
 
-class HudPanel(QWidget):
-    def __init__(self, settings: AppSettings, bridge: QObject = None, parent=None):
+class HudWidget(QWidget):
+    def __init__(self, settings: AppSettings = None, bridge: QObject = None, parent=None):
         super().__init__(parent)
         self.settings = settings
         self.hud_bridge = HudBridge()
-        self.bridge = self.hud_bridge
-        self.overlay_bridge = bridge
-        from pathlib import Path
-        icon_path = Path(__file__).parent.parent / "rtt_icon.ico"
-        if icon_path.exists():
-            from PySide6.QtGui import QIcon
-            self.setWindowIcon(QIcon(str(icon_path)))
+        self.bridge = bridge or self.hud_bridge
+        self.theme = get_theme(settings.data.ui.theme if settings else "dark")
 
-        self.drag_pos = None
-
+        load_custom_fonts()
         self._setup_ui()
         self._apply_theme(self.theme)
         if self.settings:
@@ -219,11 +220,11 @@ class HudPanel(QWidget):
         header_layout = QHBoxLayout(self.header)
         header_layout.setContentsMargins(16, 0, 16, 0)
         
-        self.dot = PulsingDot(self.theme.teal)
+        self.dot = PulsingDot(self.theme.accent)
         header_layout.addWidget(self.dot)
         
         self.status_label = QLabel("Đang nghe hệ thống")
-        self.status_label.setFont(_qfont_ui(10, QFont.Weight.Medium))
+        self.status_label.setFont(_qfont_ui(10, QFont.Weight.Bold))
         header_layout.addWidget(self.status_label)
         header_layout.addStretch()
 
@@ -244,7 +245,7 @@ class HudPanel(QWidget):
         lang_layout.addWidget(self.src_box)
 
         self.arrow_label = QLabel("→")
-        self.arrow_label.setFont(_qfont_ui(12))
+        self.arrow_label.setFont(_qfont_ui(12, QFont.Weight.Bold))
         lang_layout.addWidget(self.arrow_label)
 
         self.tgt_box = self._create_lang_box("ĐÍCH", "Tiếng Việt")
@@ -261,10 +262,10 @@ class HudPanel(QWidget):
         stats_layout = QHBoxLayout()
         stats_layout.setSpacing(8)
 
-        self.lat_box = self._create_stat_box("LATENCY", "1.2s", True)
+        self.lat_box = self._create_stat_box("LATENCY", "0.8s", True)
         stats_layout.addWidget(self.lat_box)
 
-        self.gpu_box = self._create_stat_box("GPU", "RTX 4060", False)
+        self.gpu_box = self._create_stat_box("GPU", "CUDA", False)
         stats_layout.addWidget(self.gpu_box)
 
         body_layout.addLayout(stats_layout)
@@ -276,7 +277,7 @@ class HudPanel(QWidget):
         footer_layout.setContentsMargins(16, 12, 16, 12)
         
         theme_label = QLabel("Theme")
-        theme_label.setFont(_qfont_ui(9))
+        theme_label.setFont(_qfont_ui(9, QFont.Weight.DemiBold))
         self.theme_label = theme_label
         footer_layout.addWidget(theme_label)
         footer_layout.addStretch()
@@ -291,22 +292,22 @@ class HudPanel(QWidget):
         box = HoverLiftFrame()
         box.setProperty("class", "LangBox")
         layout = QVBoxLayout(box)
-        layout.setContentsMargins(12, 9, 12, 9)
+        layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(2)
-
+        
         lbl = QLabel(label_text)
         lbl.setFont(_qfont_mono(8))
         lbl.setProperty("class", "LangLabel")
-
-        lang = QLabel(lang_text)
-        lang.setFont(_qfont_ui(11, QFont.Weight.Medium))
-        lang.setProperty("class", "LangValue")
+        
+        val = QLabel(lang_text)
+        val.setFont(_qfont_ui(11, QFont.Weight.DemiBold))
+        val.setProperty("class", "LangValue")
 
         layout.addWidget(lbl)
-        layout.addWidget(lang)
+        layout.addWidget(val)
         return box
 
-    def _create_stat_box(self, label_text, val_text, is_accent):
+    def _create_stat_box(self, label_text, val_text, is_accent=False):
         box = HoverLiftFrame()
         box.setProperty("class", "StatBox")
         layout = QHBoxLayout(box)
@@ -317,7 +318,7 @@ class HudPanel(QWidget):
         lbl.setProperty("class", "StatLabel")
         
         val = QLabel(val_text)
-        val.setFont(_qfont_mono(10))
+        val.setFont(_qfont_mono(10, QFont.Weight.Bold))
         val.setProperty("class", "StatValueAccent" if is_accent else "StatValue")
 
         layout.addWidget(lbl)
@@ -338,18 +339,19 @@ class HudPanel(QWidget):
         self.setStyleSheet(f"""
             #HudContainer {{
                 background-color: {theme.surface};
-                border-radius: 14px;
+                border: 2px solid {theme.border_chunky};
+                border-radius: 18px;
             }}
             #Header {{
-                border-bottom: 1px solid {theme.border};
+                border-bottom: 1.5px solid {theme.border_strong};
             }}
             QLabel {{
                 color: {theme.text};
             }}
             .LangBox {{
                 background-color: {theme.raised};
-                border: 1px solid {theme.border};
-                border-radius: 9px;
+                border: 1.5px solid {theme.border_strong};
+                border-radius: 10px;
             }}
             .LangLabel {{
                 color: {theme.dim};
@@ -359,7 +361,8 @@ class HudPanel(QWidget):
             }}
             .StatBox {{
                 background-color: {theme.raised};
-                border-radius: 8px;
+                border: 1.5px solid {theme.border_strong};
+                border-radius: 10px;
             }}
             .StatLabel {{
                 color: {theme.dim};
@@ -369,18 +372,20 @@ class HudPanel(QWidget):
             }}
             .StatValueAccent {{
                 color: {theme.accent};
+                font-weight: bold;
             }}
         """)
         
-        self.arrow_label.setStyleSheet(f"color: {theme.accent};")
-        self.theme_label.setStyleSheet(f"color: {theme.dim};")
-        self.status_label.setStyleSheet(f"color: {theme.text};")
+        self.arrow_label.setStyleSheet(f"color: {theme.accent}; font-weight: bold;")
+        self.theme_label.setStyleSheet(f"color: {theme.dim}; font-weight: bold;")
+        self.status_label.setStyleSheet(f"color: {theme.text}; font-weight: bold;")
 
         self.mode_toggle.update_theme(theme)
         self.theme_switcher.update_theme(theme)
 
         pass
 
+HudPanel = HudWidget
 
 class HudWindow(QWidget):
     def __init__(self, settings: AppSettings, bridge: QObject = None):

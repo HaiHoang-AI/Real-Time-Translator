@@ -67,7 +67,7 @@ def font_mono(use_custom: bool = True) -> str:
 
 @dataclass(frozen=True)
 class ThemeColors:
-    """All color tokens for one theme variant."""
+    """All color tokens for one theme variant in Playful Claymorphism style."""
     name: str
 
     bg: str
@@ -75,53 +75,85 @@ class ThemeColors:
     raised: str
     text: str
     dim: str
-    border: str          # derived: subtle border color
-    border_strong: str   # derived: more visible border
+    border: str          # subtle border color
+    border_strong: str   # distinct border
 
-    accent: str          # warm amber / orange
+    accent: str          # vibrant emerald green
     accent_text: str     # text on accent bg
     teal: str            # source-language color
 
     error: str           # red-ish
-    warning: str         # amber / orange (same as accent in dark)
+    warning: str         # amber / orange
 
     glass_opacity: float  # 0–1, overlay backdrop
     glass_blur: int       # px
 
+    # Playful Claymorphism extensions
+    border_chunky: str = "#1E293B"
+    cta_bg: str = "#10B981"
+    cta_hover: str = "#059669"
+    cta_text: str = "#FFFFFF"
+    pill_bg: str = "rgba(16, 185, 129, 0.15)"
+    pill_border: str = "rgba(16, 185, 129, 0.35)"
+    pill_text: str = "#059669"
+    accent_blue: str = "#0284C7"
+    accent_amber: str = "#D97706"
+    accent_purple: str = "#9333EA"
+
 
 DARK = ThemeColors(
     name="dark",
-    bg="#14110E",
-    surface="#1C1815",
-    raised="#232019",
-    text="#F0EBE3",
-    dim="#A39C92",
-    border="rgba(255,255,255,0.09)",
-    border_strong="rgba(255,255,255,0.12)",
-    accent="#C4885A",
-    accent_text="#14110E",
-    teal="#4B9E8E",
-    error="#C05A4A",
-    warning="#C4885A",
-    glass_opacity=0.78,
+    bg="#121316",
+    surface="#1C1E26",
+    raised="#252834",
+    text="#F8FAFC",
+    dim="#94A3B8",
+    border="rgba(255,255,255,0.12)",
+    border_strong="rgba(255,255,255,0.22)",
+    border_chunky="#383F52",
+    accent="#10B981",
+    accent_text="#FFFFFF",
+    teal="#2DD4BF",
+    cta_bg="#10B981",
+    cta_hover="#059669",
+    cta_text="#FFFFFF",
+    pill_bg="rgba(16, 185, 129, 0.18)",
+    pill_border="rgba(16, 185, 129, 0.40)",
+    pill_text="#34D399",
+    accent_blue="#38BDF8",
+    accent_amber="#FBBF24",
+    accent_purple="#C084FC",
+    error="#F87171",
+    warning="#FBBF24",
+    glass_opacity=0.82,
     glass_blur=22,
 )
 
 LIGHT = ThemeColors(
     name="light",
-    bg="#F5F2EC",
-    surface="#FFFDF9",
-    raised="#F5F2EC",
-    text="#201C17",
-    dim="#6B645B",
-    border="rgba(0,0,0,0.09)",
-    border_strong="rgba(0,0,0,0.12)",
-    accent="#8E5F35",
-    accent_text="#FFFDF9",
-    teal="#3B7D6F",
-    error="#B04030",
-    warning="#8E5F35",
-    glass_opacity=0.90,
+    bg="#FAF8F5",
+    surface="#FFFFFF",
+    raised="#F3EFE8",
+    text="#18181B",
+    dim="#64748B",
+    border="rgba(30, 41, 59, 0.14)",
+    border_strong="#2D3748",
+    border_chunky="#1E293B",
+    accent="#10B981",
+    accent_text="#FFFFFF",
+    teal="#0D9488",
+    cta_bg="#10B981",
+    cta_hover="#059669",
+    cta_text="#FFFFFF",
+    pill_bg="#DCFCE7",
+    pill_border="#86EFAC",
+    pill_text="#15803D",
+    accent_blue="#0284C7",
+    accent_amber="#D97706",
+    accent_purple="#9333EA",
+    error="#EF4444",
+    warning="#F59E0B",
+    glass_opacity=0.92,
     glass_blur=22,
 )
 
@@ -136,7 +168,7 @@ def get_theme(name: str) -> ThemeColors:
 # ──────────────────────────────────────── QSS generation ───────────
 
 def generate_stylesheet(theme: ThemeColors, use_custom_fonts: bool = True) -> str:
-    """Generate a full QSS stylesheet string for the given theme."""
+    """Generate a full QSS stylesheet string for the given theme in Playful Claymorphism style."""
     ui = font_ui(use_custom_fonts)
     mono = font_mono(use_custom_fonts)
 
@@ -149,10 +181,10 @@ QWidget {{
     font-size: 13px;
 }}
 
-QWidget#centralPanel {{
+QWidget#CentralContainer {{
     background-color: {theme.surface};
-    border: 1px solid {theme.border};
-    border-radius: 14px;
+    border: 2px solid {theme.border_chunky};
+    border-radius: 18px;
 }}
 
 /* ── Labels ──────────────────────────────────────── */
@@ -163,14 +195,14 @@ QLabel {{
 }}
 
 QLabel[class="heading"] {{
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 17px;
+    font-weight: 700;
     color: {theme.text};
 }}
 
 QLabel[class="subheading"] {{
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     color: {theme.text};
 }}
 
@@ -182,86 +214,100 @@ QLabel[class="dim"] {{
 QLabel[class="mono"] {{
     font-family: '{mono}', 'Consolas', monospace;
     font-size: 11px;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.04em;
     color: {theme.dim};
 }}
 
 QLabel[class="mono-accent"] {{
     font-family: '{mono}', 'Consolas', monospace;
     font-size: 11px;
+    font-weight: 600;
     color: {theme.accent};
 }}
 
 QLabel[class="mono-teal"] {{
     font-family: '{mono}', 'Consolas', monospace;
     font-size: 11px;
+    font-weight: 600;
     color: {theme.teal};
 }}
 
 QLabel[class="section-title"] {{
-    font-family: '{mono}', 'Consolas', monospace;
-    font-size: 10px;
-    letter-spacing: 0.10em;
+    font-family: '{ui}', 'Segoe UI', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
+    font-weight: 700;
     color: {theme.dim};
 }}
 
-/* ── Buttons ─────────────────────────────────────── */
+/* ── Buttons (Chunky Playful Style) ───────────────── */
 QPushButton {{
     background-color: {theme.raised};
     color: {theme.text};
-    border: 1px solid {theme.border};
-    border-radius: 9px;
-    padding: 8px 14px;
+    border: 1.5px solid {theme.border_strong};
+    border-radius: 10px;
+    padding: 8px 16px;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
 }}
 
 QPushButton:hover {{
-    background-color: {theme.bg if theme.name == 'light' else '#2C2721'};
-    border-color: {theme.border_strong};
+    background-color: {'#EAE5DD' if theme.name == 'light' else '#2E3242'};
+    border-color: {theme.border_chunky};
 }}
 
 QPushButton:pressed {{
     background-color: {theme.accent};
     color: {theme.accent_text};
+    border-color: {theme.border_chunky};
 }}
 
-QPushButton[class="primary"] {{
-    background-color: {theme.accent};
-    color: {theme.accent_text};
-    border: none;
-    font-weight: 600;
+/* Primary & CTA Buttons (Vibrant Emerald) */
+QPushButton[class="primary"],
+QPushButton[class="btn-cta"] {{
+    background-color: {theme.cta_bg};
+    color: {theme.cta_text};
+    border: 2px solid {theme.border_chunky};
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 13.5px;
+    padding: 9px 18px;
 }}
 
-QPushButton[class="primary"]:hover {{
-    background-color: {'#A87248' if theme.name == 'dark' else '#7A5230'};
+QPushButton[class="primary"]:hover,
+QPushButton[class="btn-cta"]:hover {{
+    background-color: {theme.cta_hover};
+    border-color: {theme.border_chunky};
 }}
 
 QPushButton[class="ghost"] {{
     background: transparent;
-    border: 1px solid {theme.border};
+    border: 1.5px solid {theme.border};
+    border-radius: 10px;
     color: {theme.dim};
+    font-weight: 600;
 }}
 
 QPushButton[class="ghost"]:hover {{
     background-color: {theme.raised};
+    border-color: {theme.border_strong};
     color: {theme.text};
 }}
 
 /* ── Segment Control (segmented toggle) ──────────── */
 QWidget[class="segment-bg"] {{
     background-color: {theme.raised};
-    border: 1px solid {theme.border};
-    border-radius: 10px;
+    border: 1.5px solid {theme.border_strong};
+    border-radius: 12px;
 }}
 
 QPushButton[class="seg-active"] {{
     background-color: {theme.accent};
     color: {theme.accent_text};
-    border: none;
-    border-radius: 7px;
-    font-weight: 600;
+    border: 1.5px solid {theme.border_chunky};
+    border-radius: 9px;
+    font-weight: 700;
     padding: 8px 0;
 }}
 
@@ -269,54 +315,64 @@ QPushButton[class="seg-inactive"] {{
     background: transparent;
     color: {theme.dim};
     border: none;
-    border-radius: 7px;
-    font-weight: 500;
+    border-radius: 9px;
+    font-weight: 600;
     padding: 8px 0;
 }}
 
 QPushButton[class="seg-inactive"]:hover {{
     color: {theme.text};
+    background-color: {'rgba(0,0,0,0.04)' if theme.name == 'light' else 'rgba(255,255,255,0.06)'};
 }}
 
 /* ── Sliders ─────────────────────────────────────── */
 QSlider::groove:horizontal {{
-    height: 5px;
-    background: {'#2C2721' if theme.name == 'dark' else '#E0DDD7'};
-    border-radius: 3px;
+    height: 7px;
+    background: {'#E2DDD4' if theme.name == 'light' else '#2C303E'};
+    border: 1px solid {theme.border};
+    border-radius: 4px;
 }}
 
 QSlider::handle:horizontal {{
     background: {theme.accent};
-    width: 16px;
-    height: 16px;
-    margin: -6px 0;
-    border-radius: 8px;
+    border: 2px solid {theme.border_chunky};
+    width: 18px;
+    height: 18px;
+    margin: -7px 0;
+    border-radius: 9px;
+}}
+
+QSlider::handle:horizontal:hover {{
+    background: {theme.cta_hover};
 }}
 
 QSlider::sub-page:horizontal {{
     background: {theme.accent};
-    border-radius: 3px;
+    border-radius: 4px;
 }}
 
 /* ── Toggle Switch (styled checkbox) ─────────────── */
 QCheckBox {{
-    spacing: 8px;
-    font-size: 12.5px;
-    color: {theme.dim};
+    spacing: 10px;
+    font-size: 13px;
+    font-weight: 500;
+    color: {theme.text};
 }}
 
 QCheckBox::indicator {{
-    width: 38px;
-    height: 21px;
-    border-radius: 11px;
+    width: 42px;
+    height: 23px;
+    border-radius: 12px;
+    border: 1.5px solid {theme.border_strong};
 }}
 
 QCheckBox::indicator:unchecked {{
-    background-color: {'#2C2721' if theme.name == 'dark' else '#D4D1CC'};
+    background-color: {'#DDD7CD' if theme.name == 'light' else '#2C303E'};
 }}
 
 QCheckBox::indicator:checked {{
     background-color: {theme.accent};
+    border-color: {theme.border_chunky};
 }}
 
 /* ── Scroll area ─────────────────────────────────── */
@@ -326,7 +382,7 @@ QScrollArea {{
 }}
 
 QScrollBar:vertical {{
-    width: 6px;
+    width: 7px;
     background: transparent;
     margin: 4px 0;
 }}
@@ -335,6 +391,10 @@ QScrollBar::handle:vertical {{
     background: {theme.dim};
     border-radius: 3px;
     min-height: 24px;
+}}
+
+QScrollBar::handle:vertical:hover {{
+    background: {theme.accent};
 }}
 
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
@@ -347,67 +407,71 @@ QScrollBar:horizontal {{
 
 /* ── Input fields ────────────────────────────────── */
 QLineEdit {{
-    background-color: {theme.raised};
+    background-color: {theme.surface};
     color: {theme.text};
-    border: 1px solid {theme.border};
-    border-radius: 9px;
-    padding: 9px 12px;
+    border: 1.5px solid {theme.border_strong};
+    border-radius: 10px;
+    padding: 9px 13px;
     font-size: 13px;
     selection-background-color: {theme.accent};
 }}
 
 QLineEdit:focus {{
-    border-color: {theme.accent};
+    border: 2px solid {theme.accent};
+    background-color: {theme.surface};
 }}
 
 /* ── Combo box ───────────────────────────────────── */
 QComboBox {{
     background-color: {theme.raised};
     color: {theme.text};
-    border: 1px solid {theme.border};
-    border-radius: 9px;
-    padding: 8px 12px;
+    border: 1.5px solid {theme.border_strong};
+    border-radius: 10px;
+    padding: 8px 14px;
     font-size: 13px;
-    min-height: 20px;
+    font-weight: 500;
+    min-height: 22px;
 }}
 
 QComboBox:hover {{
-    border-color: {theme.border_strong};
+    border-color: {theme.border_chunky};
 }}
 
 QComboBox::drop-down {{
     border: none;
-    width: 24px;
+    width: 26px;
 }}
 
 QComboBox QAbstractItemView {{
     background-color: {theme.surface};
     color: {theme.text};
-    border: 1px solid {theme.border};
-    border-radius: 8px;
+    border: 1.5px solid {theme.border_strong};
+    border-radius: 10px;
     selection-background-color: {theme.raised};
-    selection-color: {theme.text};
+    selection-color: {theme.accent};
     outline: 0;
-    padding: 4px;
+    padding: 6px;
 }}
 
-/* ── Card containers ─────────────────────────────── */
-QFrame[class="card"] {{
-    background-color: {theme.raised};
-    border: 1px solid {theme.border};
-    border-radius: 10px;
+/* ── Card containers (Claymorphism & Playful) ────── */
+QFrame[class="card"],
+QFrame[class="clay-card"] {{
+    background-color: {theme.surface};
+    border: 1.5px solid {theme.border_strong};
+    border-radius: 14px;
 }}
 
 QFrame[class="card-active"] {{
-    background-color: {theme.raised};
-    border: 1px solid {'rgba(75,158,142,0.4)' if theme.name == 'dark' else 'rgba(59,125,111,0.4)'};
-    border-radius: 10px;
+    background-color: {theme.surface};
+    border: 2px solid {theme.accent};
+    border-radius: 14px;
 }}
 
-QFrame[class="card-surface"] {{
-    background-color: {theme.surface};
-    border: 1px solid {theme.border};
-    border-radius: 14px;
+QFrame[class="card-surface"],
+QFrame[class="clay-hero"] {{
+    background-color: {theme.raised};
+    border: 2px solid {theme.border_chunky};
+    border-radius: 16px;
 }}
 
 /* ── Separator ───────────────────────────────────── */
@@ -422,20 +486,21 @@ QFrame[class="separator"] {{
 QPushButton[class="tab-active"] {{
     background-color: {theme.raised};
     color: {theme.text};
-    border: 1px solid {theme.border};
-    border-radius: 8px;
+    border: 1.5px solid {theme.border_strong};
+    border-radius: 10px;
     text-align: left;
     padding: 10px 14px;
-    font-weight: 500;
+    font-weight: 600;
 }}
 
 QPushButton[class="tab-inactive"] {{
     background: transparent;
     color: {theme.dim};
-    border: none;
-    border-radius: 8px;
+    border: 1.5px solid transparent;
+    border-radius: 10px;
     text-align: left;
     padding: 10px 14px;
+    font-weight: 500;
 }}
 
 QPushButton[class="tab-inactive"]:hover {{
@@ -446,20 +511,22 @@ QPushButton[class="tab-inactive"]:hover {{
 /* ── Menu (tray) ─────────────────────────────────── */
 QMenu {{
     background-color: {theme.surface};
-    border: 1px solid {theme.border_strong};
-    border-radius: 12px;
-    padding: 7px;
+    border: 1.5px solid {theme.border_strong};
+    border-radius: 14px;
+    padding: 8px;
 }}
 
 QMenu::item {{
-    padding: 8px 11px;
+    padding: 8px 12px;
     border-radius: 8px;
     font-size: 13px;
+    font-weight: 500;
     color: {theme.text};
 }}
 
 QMenu::item:selected {{
-    background-color: {'rgba(255,255,255,0.06)' if theme.name == 'dark' else 'rgba(0,0,0,0.05)'};
+    background-color: {theme.raised};
+    color: {theme.accent};
 }}
 
 QMenu::item:disabled {{
@@ -469,7 +536,7 @@ QMenu::item:disabled {{
 QMenu::separator {{
     height: 1px;
     background: {theme.border};
-    margin: 4px 6px;
+    margin: 5px 6px;
 }}
 """
 

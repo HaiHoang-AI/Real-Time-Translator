@@ -252,12 +252,12 @@ class _DualSubtitleWidget(QWidget):
 
         card_rect = QRectF(card_x, min_y, card_w, card_h)
 
-        # ── Step 1: Draw Background Card ──
+        # ── Step 1: Draw Background Card (Rounded Claymorphic) ──
         if self._bg_opacity > 0.01:
             bg_alpha = int(255 * self._bg_opacity)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(0, 0, 0, bg_alpha))
-            painter.drawRoundedRect(card_rect, 14, 14)
+            painter.setPen(QPen(QColor(255, 255, 255, 30), 1.2))
+            painter.setBrush(QColor(18, 20, 26, bg_alpha))
+            painter.drawRoundedRect(card_rect, 16, 16)
 
         # Precise line alignment helper inside card_rect
         def get_x(line_w: float) -> float:

@@ -81,7 +81,7 @@ def font_mono(pt_size: int = 10, weight: QFont.Weight = QFont.Weight.Normal) -> 
 # ───────────────────────────────────── Item Widget ───────────────────
 
 class TranscriptEntryWidget(HoverLiftFrame):
-    """Single row in the transcript list with hover lift effect."""
+    """Single speech card row in the transcript list with claymorphic styling."""
 
     def __init__(self, entry: TranscriptEntry, theme: ThemeColors = DARK, is_latest: bool = False, parent=None):
         super().__init__(parent)
@@ -91,53 +91,63 @@ class TranscriptEntryWidget(HoverLiftFrame):
         self.setup_ui()
 
     def setup_ui(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(14)
+        is_dark = (getattr(self.theme, 'name', '') == 'dark')
+        bg_col = "#1E222D" if is_dark else "#FFFFFF"
+        border_col = self.theme.accent if self.is_latest else ("rgba(255,255,255,0.08)" if is_dark else "rgba(30,41,59,0.12)")
 
-        # Time column
+        self.setStyleSheet(f"""
+            TranscriptEntryWidget {{
+                background-color: {bg_col};
+                border: 1.5px solid {border_col};
+                border-radius: 12px;
+            }}
+        """)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(12)
+
+        # Time badge pill
         st = getattr(self.entry, 'start_time_s', 0.0)
         time_str = getattr(self.entry, 'time_str', '') or f"{(int(st)//60):02d}:{(int(st)%60):02d}"
         time_lbl = QLabel(time_str)
-        time_lbl.setFont(font_mono(9))
-        time_lbl.setFixedWidth(52)
-        time_lbl.setAlignment(Qt.AlignTop | Qt.AlignRight)
+        time_lbl.setFont(font_mono(8.5, QFont.Weight.Medium))
+        time_lbl.setFixedWidth(46)
+        time_lbl.setAlignment(Qt.AlignCenter)
+        time_bg = self.theme.pill_bg if self.is_latest else (self.theme.raised)
         time_color = self.theme.accent if self.is_latest else self.theme.dim
-        time_lbl.setStyleSheet(f"color: {time_color}; background: transparent; border: none;")
-        layout.addWidget(time_lbl)
+        time_lbl.setStyleSheet(f"""
+            background-color: {time_bg};
+            color: {time_color};
+            border: 1px solid {self.theme.border};
+            border-radius: 8px;
+            padding: 2px 0px;
+        """)
+        layout.addWidget(time_lbl, 0, Qt.AlignTop)
 
         # Content column (Source text + Target text)
         content_box = QWidget()
         content_box.setStyleSheet("background: transparent; border: none;")
         content_layout = QVBoxLayout(content_box)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(3)
+        content_layout.setSpacing(4)
 
         if self.entry.source_text:
             src_lbl = QLabel(self.entry.source_text)
-            src_lbl.setFont(font_ui(9))
-            src_lbl.setStyleSheet(f"color: {self.theme.teal}; opacity: 0.85; background: transparent; border: none;")
+            src_lbl.setFont(font_ui(9, QFont.Weight.Medium))
+            src_lbl.setStyleSheet(f"color: {self.theme.teal}; background: transparent; border: none;")
             src_lbl.setWordWrap(True)
             content_layout.addWidget(src_lbl)
 
         if self.entry.target_text:
             tgt_lbl = QLabel(self.entry.target_text)
-            tgt_weight = QFont.Weight.DemiBold if self.is_latest else QFont.Weight.Normal
-            tgt_lbl.setFont(font_ui(11, tgt_weight))
+            tgt_weight = QFont.Weight.Bold if self.is_latest else QFont.Weight.DemiBold
+            tgt_lbl.setFont(font_ui(10.5, tgt_weight))
             tgt_lbl.setStyleSheet(f"color: {self.theme.text}; background: transparent; border: none;")
             tgt_lbl.setWordWrap(True)
             content_layout.addWidget(tgt_lbl)
 
         layout.addWidget(content_box, 1)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-
-        if self.is_latest:
-            painter.fillRect(self.rect(), QColor(255, 255, 255, 8))
-            painter.setPen(QPen(QColor(self.theme.accent), 2))
-            painter.drawLine(1, 0, 1, self.height())
 
 
 class FormatButton(ElasticButton):
@@ -243,37 +253,58 @@ class SidebarActionItemWidget(QPushButton):
         super().__init__(parent)
         self.theme = theme
         self.is_selected = is_selected
+        self.is_new_btn = (icon_str == "+" or text_str.lower() in ("new", "tạo mới", "phiên mới"))
         self.setText(f"{icon_str}  {text_str}")
-        self.setFont(font_ui(9, QFont.Weight.Medium))
+        self.setFont(font_ui(9.5, QFont.Weight.Bold if self.is_new_btn else QFont.Weight.DemiBold))
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(30)
+        self.setFixedHeight(34 if self.is_new_btn else 30)
         self._update_style()
 
     def _update_style(self):
         is_dark = (getattr(self.theme, 'name', '') == 'dark')
+        if self.is_new_btn:
+            self.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {self.theme.cta_bg};
+                    color: {self.theme.cta_text};
+                    border: 1.5px solid {self.theme.border_chunky};
+                    border-radius: 9px;
+                    padding: 0 12px;
+                    text-align: center;
+                    font-weight: 700;
+                }}
+                QPushButton:hover {{
+                    background-color: {self.theme.cta_hover};
+                }}
+            """)
+            return
+
         if self.is_selected:
-            bg = "#332D27" if is_dark else "#E2DDD3"
-            text_color = self.theme.text
+            bg = "#2B2F3D" if is_dark else "#E2DDD3"
+            text_color = self.theme.accent
+            border_color = self.theme.accent
             font_w = "bold"
         else:
             bg = "transparent"
-            text_color = self.theme.text if is_dark else "#3D3830"
-            font_w = "normal"
+            text_color = self.theme.text if is_dark else "#2D3748"
+            border_color = "transparent"
+            font_w = "600"
 
-        hover_bg = "#302A24" if is_dark else "#ECE6DB"
+        hover_bg = "#242835" if is_dark else "#EFEAE1"
 
         self.setStyleSheet(f"""
             QPushButton {{
                 background-color: {bg};
                 color: {text_color};
-                border: none;
-                border-radius: 7px;
+                border: 1.5px solid {border_color};
+                border-radius: 8px;
                 padding: 0 10px;
                 text-align: left;
                 font-weight: {font_w};
             }}
             QPushButton:hover {{
                 background-color: {hover_bg};
+                border-color: {self.theme.border};
             }}
         """)
 
@@ -486,29 +517,30 @@ class ClaudeSessionItemWidget(QWidget):
     def _update_style(self) -> None:
         is_dark = (getattr(self.theme, 'name', '') == 'dark')
         if self.is_active:
-            active_bg = "#332D27" if is_dark else "#E2DDD3"
-            active_border = "rgba(255,255,255,0.08)" if is_dark else "rgba(0,0,0,0.08)"
+            active_bg = "rgba(16, 185, 129, 0.12)" if is_dark else "#DCFCE7"
+            active_border = self.theme.accent
             self.setStyleSheet(f"""
                 ClaudeSessionItemWidget {{
                     background-color: {active_bg};
-                    border: 1px solid {active_border};
-                    border-radius: 6px;
+                    border: 1.5px solid {active_border};
+                    border-radius: 9px;
                 }}
             """)
             self.title_lbl.setStyleSheet(f"color: {self.theme.text}; font-weight: bold; background: transparent; border: none;")
         else:
-            hover_bg = "#302A24" if is_dark else "#ECE6DB"
+            hover_bg = "#242835" if is_dark else "#EFEAE1"
             self.setStyleSheet(f"""
                 ClaudeSessionItemWidget {{
                     background-color: transparent;
-                    border: 1px solid transparent;
-                    border-radius: 6px;
+                    border: 1.5px solid transparent;
+                    border-radius: 9px;
                 }}
                 ClaudeSessionItemWidget:hover {{
                     background-color: {hover_bg};
+                    border-color: {self.theme.border};
                 }}
             """)
-            self.title_lbl.setStyleSheet(f"color: {self.theme.dim}; font-weight: normal; background: transparent; border: none;")
+            self.title_lbl.setStyleSheet(f"color: {self.theme.dim}; font-weight: 500; background: transparent; border: none;")
 
     def set_checked(self, checked: bool) -> None:
         self.is_checked = checked
@@ -1070,43 +1102,50 @@ class TranscriptPanel(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
-        # ── Header Bar ──
+        # ── Header Bar (Playful Claymorphic) ──
         header = QFrame()
-        header.setFixedHeight(46)
-        header.setStyleSheet(f"border-bottom: 1px solid {self.theme.border}; background: transparent;")
+        header.setFixedHeight(50)
+        header.setStyleSheet(f"border-bottom: 1.5px solid {self.theme.border_strong}; background: transparent;")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(12, 0, 12, 0)
-        header_layout.setSpacing(8)
+        header_layout.setContentsMargins(14, 0, 14, 0)
+        header_layout.setSpacing(10)
 
-        # Persistent Sidebar Toggle button (accessible even when left sidebar is collapsed to 0 width)
+        # Persistent Sidebar Toggle button
         self.center_sidebar_toggle_btn = SidebarIconButton("\u2261", self.theme, "Mở / Thu gọn thanh bên")
         self.center_sidebar_toggle_btn.clicked.connect(self._toggle_sidebar)
         header_layout.addWidget(self.center_sidebar_toggle_btn)
 
         # Active Session Title
         self.header_title_lbl = QLabel(self.session.display_title if self.session else "Phiên hiện tại")
-        self.header_title_lbl.setFont(font_ui(10, QFont.Weight.DemiBold))
+        self.header_title_lbl.setFont(font_ui(10.5, QFont.Weight.Bold))
         self.header_title_lbl.setStyleSheet(f"color: {self.theme.text}; border: none;")
         header_layout.addWidget(self.header_title_lbl)
 
-        # Metadata label
+        # Metadata pill label
         self.meta_lbl = QLabel("00:00 · 0 câu · AUTO → VI")
-        self.meta_lbl.setFont(font_mono(8))
-        self.meta_lbl.setStyleSheet(f"color: {self.theme.dim}; border: none;")
+        self.meta_lbl.setFont(font_mono(8.5, QFont.Weight.Medium))
+        self.meta_lbl.setStyleSheet(f"""
+            background-color: {self.theme.raised};
+            color: {self.theme.dim};
+            border: 1px solid {self.theme.border};
+            border-radius: 8px;
+            padding: 3px 8px;
+        """)
         header_layout.addWidget(self.meta_lbl)
 
-        # Pause / Resume
+        # Pause / Resume Button
         self.pause_btn = ElasticButton("❚❚ Tạm dừng")
-        self.pause_btn.setFont(font_ui(8, QFont.Weight.DemiBold))
-        self.pause_btn.setFixedSize(95, 26)
+        self.pause_btn.setFont(font_ui(8.5, QFont.Weight.Bold))
+        self.pause_btn.setFixedHeight(28)
         self.pause_btn.setCursor(Qt.PointingHandCursor)
         self.pause_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {self.theme.raised};
                 color: {self.theme.text};
-                border: 1px solid {self.theme.border};
-                border-radius: 6px;
-                padding: 0 4px;
+                border: 1.5px solid {self.theme.border_strong};
+                border-radius: 8px;
+                padding: 0 10px;
+                font-weight: 700;
             }}
             QPushButton:hover {{
                 border-color: {self.theme.accent};
@@ -1120,37 +1159,41 @@ class TranscriptPanel(QWidget):
 
         # In-Session Search
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Tìm trong phiên...")
-        self.search_input.setFont(font_ui(8))
-        self.search_input.setFixedWidth(130)
-        self.search_input.setFixedHeight(26)
+        self.search_input.setPlaceholderText("🔍 Tìm trong phiên...")
+        self.search_input.setFont(font_ui(8.5))
+        self.search_input.setFixedWidth(145)
+        self.search_input.setFixedHeight(28)
         self.search_input.setStyleSheet(f"""
             QLineEdit {{
-                background-color: {self.theme.raised};
+                background-color: {self.theme.surface};
                 color: {self.theme.text};
-                border: 1px solid {self.theme.border};
-                border-radius: 13px;
-                padding: 0 10px;
+                border: 1.5px solid {self.theme.border_strong};
+                border-radius: 14px;
+                padding: 0 12px;
+            }}
+            QLineEdit:focus {{
+                border-color: {self.theme.accent};
             }}
         """)
         self.search_input.textChanged.connect(self.filter_entries)
         header_layout.addWidget(self.search_input)
 
-        # Export button — small, sits on header
-        self.export_btn = ElasticButton("Xuất")
-        self.export_btn.setFont(font_ui(8, QFont.Weight.DemiBold))
-        self.export_btn.setFixedHeight(26)
+        # Export & AI Summary CTA button
+        self.export_btn = ElasticButton("🔮 Công cụ")
+        self.export_btn.setFont(font_ui(8.5, QFont.Weight.Bold))
+        self.export_btn.setFixedHeight(28)
         self.export_btn.setCursor(Qt.PointingHandCursor)
         self.export_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: {self.theme.accent};
-                color: {self.theme.accent_text};
-                border: none;
-                border-radius: 6px;
-                padding: 0 10px;
+                background-color: {self.theme.cta_bg};
+                color: {self.theme.cta_text};
+                border: 1.5px solid {self.theme.border_chunky};
+                border-radius: 8px;
+                padding: 0 12px;
+                font-weight: 700;
             }}
             QPushButton:hover {{
-                opacity: 0.9;
+                background-color: {self.theme.cta_hover};
             }}
         """)
         self.export_btn.clicked.connect(self._open_right_sidebar_and_export)

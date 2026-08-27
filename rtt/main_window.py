@@ -52,12 +52,12 @@ from rtt.motion import ElasticButton, SlidingStackedWidget
 
 
 class TopTabButton(ElasticButton):
-    """Top bar navigation tab button with spring physics scaling."""
+    """Top bar navigation tab button with spring physics scaling and claymorphic styling."""
 
     def __init__(self, text: str, theme: ThemeColors, parent=None):
         super().__init__(text, parent)
         self.theme = theme
-        self.setFont(font_ui(10, QFont.Weight.Medium))
+        self.setFont(font_ui(10, QFont.Weight.DemiBold))
         self.setCursor(Qt.PointingHandCursor)
         self.setCheckable(True)
         self.setFixedHeight(34)
@@ -70,10 +70,10 @@ class TopTabButton(ElasticButton):
                 QPushButton {{
                     background-color: {self.theme.accent};
                     color: {self.theme.accent_text};
-                    border: none;
-                    border-radius: 8px;
+                    border: 1.5px solid {self.theme.border_chunky};
+                    border-radius: 9px;
                     padding: 0 16px;
-                    font-weight: 600;
+                    font-weight: 700;
                 }}
             """)
         else:
@@ -81,12 +81,13 @@ class TopTabButton(ElasticButton):
                 QPushButton {{
                     background-color: transparent;
                     color: {self.theme.dim};
-                    border: 1px solid transparent;
-                    border-radius: 8px;
+                    border: 1.5px solid transparent;
+                    border-radius: 9px;
                     padding: 0 16px;
+                    font-weight: 600;
                 }}
                 QPushButton:hover {{
-                    background-color: {self.theme.raised};
+                    background-color: {'rgba(0,0,0,0.05)' if self.theme.name == 'light' else 'rgba(255,255,255,0.06)'};
                     color: {self.theme.text};
                 }}
             """)
@@ -149,7 +150,7 @@ class MainWindow(QWidget):
 
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setMinimumSize(640, 480)
+        self.setMinimumSize(680, 500)
         self.setMouseTracking(True)
         self._resize_edge = "none"
 
@@ -181,8 +182,8 @@ class MainWindow(QWidget):
         self.container.setStyleSheet(f"""
             QFrame#CentralContainer {{
                 background-color: {self.theme.surface};
-                border-radius: 14px;
-                border: 1px solid {self.theme.border};
+                border-radius: 18px;
+                border: 2px solid {self.theme.border_chunky};
             }}
         """)
         container_layout = QVBoxLayout(self.container)
@@ -190,25 +191,51 @@ class MainWindow(QWidget):
         container_layout.setSpacing(0)
         main_layout.addWidget(self.container)
 
-        # ── 1. Top Header Bar with Navigation Tabs ──────────────────
+        # ── 1. Top Header Bar with Navigation Tabs & Pill Badge ─────
         self.header = HeaderBar(self, self.container)
-        self.header.setFixedHeight(48)
-        self.header.setStyleSheet(f"border-bottom: 1px solid {self.theme.border}; background: transparent;")
+        self.header.setFixedHeight(54)
+        self.header.setStyleSheet(f"border-bottom: 1.5px solid {self.theme.border_strong}; background: transparent;")
         header_layout = QHBoxLayout(self.header)
-        header_layout.setContentsMargins(14, 0, 10, 0)
-        header_layout.setSpacing(10)
+        header_layout.setContentsMargins(16, 0, 12, 0)
+        header_layout.setSpacing(12)
 
-        # Logo badge & status dot
-        self.dot = PulsingDot(self.theme.teal)
-        self.dot.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        header_layout.addWidget(self.dot)
+        # App Brand & Status Pill
+        brand_box = QFrame()
+        brand_box.setStyleSheet("background: transparent; border: none;")
+        brand_layout = QHBoxLayout(brand_box)
+        brand_layout.setContentsMargins(0, 0, 0, 0)
+        brand_layout.setSpacing(8)
 
         app_title = QLabel("Real-Time Translator")
-        app_title.setFont(font_ui(11, QFont.Weight.DemiBold))
+        app_title.setFont(font_ui(12, QFont.Weight.Bold))
         app_title.setStyleSheet(f"color: {self.theme.text}; border: none;")
         app_title.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        header_layout.addWidget(app_title)
+        brand_layout.addWidget(app_title)
 
+        # Playful Pill Status Badge
+        pill_status = QFrame()
+        pill_status.setStyleSheet(f"""
+            QFrame {{
+                background-color: {self.theme.pill_bg};
+                border: 1.5px solid {self.theme.pill_border};
+                border-radius: 12px;
+            }}
+        """)
+        pill_layout = QHBoxLayout(pill_status)
+        pill_layout.setContentsMargins(8, 2, 10, 2)
+        pill_layout.setSpacing(6)
+
+        self.dot = PulsingDot(self.theme.accent)
+        self.dot.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        pill_layout.addWidget(self.dot)
+
+        status_lbl = QLabel("AI Offline")
+        status_lbl.setFont(font_ui(9, QFont.Weight.Bold))
+        status_lbl.setStyleSheet(f"color: {self.theme.pill_text}; border: none; background: transparent;")
+        pill_layout.addWidget(status_lbl)
+        brand_layout.addWidget(pill_status)
+
+        header_layout.addWidget(brand_box)
         header_layout.addStretch(1)
 
         # Segmented Top Navigation Tabs Bar
@@ -216,8 +243,8 @@ class MainWindow(QWidget):
         tab_bar_frame.setStyleSheet(f"""
             QFrame {{
                 background-color: {self.theme.raised};
-                border: 1px solid {self.theme.border};
-                border-radius: 10px;
+                border: 1.5px solid {self.theme.border_strong};
+                border-radius: 12px;
             }}
         """)
         tab_bar_layout = QHBoxLayout(tab_bar_frame)
@@ -245,42 +272,43 @@ class MainWindow(QWidget):
 
         header_layout.addStretch(1)
 
-        # Window Controls: Minimize, Maximize/Restore, Close (Bigger & clear)
-        _wc_style = lambda fsize="16px", hover_alpha="0.22", hover_color="#E8A878": f"""
+        # Window Controls: Minimize, Maximize/Restore, Close (Playful Chunky Style)
+        _wc_style = lambda hover_bg=self.theme.raised, hover_color=self.theme.accent: f"""
             QPushButton {{
-                background: transparent;
-                color: {self.theme.accent};
-                border: none;
-                border-radius: 6px;
+                background-color: transparent;
+                color: {self.theme.dim};
+                border: 1.5px solid transparent;
+                border-radius: 8px;
                 font-family: 'Segoe UI', 'Segoe UI Symbol', Arial, sans-serif;
-                font-size: {fsize};
+                font-size: 15px;
                 font-weight: bold;
                 padding: 0;
             }}
             QPushButton:hover {{
-                background-color: rgba(196, 136, 90, {hover_alpha});
+                background-color: {hover_bg};
+                border-color: {self.theme.border_strong};
                 color: {hover_color};
             }}
         """
 
         btn_min = QPushButton("─")
-        btn_min.setFixedSize(36, 30)
+        btn_min.setFixedSize(34, 30)
         btn_min.setCursor(Qt.PointingHandCursor)
-        btn_min.setStyleSheet(_wc_style("18px", "0.22", "#E8A878"))
+        btn_min.setStyleSheet(_wc_style())
         btn_min.clicked.connect(self.showMinimized)
         header_layout.addWidget(btn_min)
 
         btn_max = QPushButton("□")
-        btn_max.setFixedSize(36, 30)
+        btn_max.setFixedSize(34, 30)
         btn_max.setCursor(Qt.PointingHandCursor)
-        btn_max.setStyleSheet(_wc_style("16px", "0.22", "#E8A878"))
+        btn_max.setStyleSheet(_wc_style())
         btn_max.clicked.connect(self._toggle_maximize)
         header_layout.addWidget(btn_max)
 
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(36, 30)
+        close_btn.setFixedSize(34, 30)
         close_btn.setCursor(Qt.PointingHandCursor)
-        close_btn.setStyleSheet(_wc_style("17px", "0.35", "#F0B88A"))
+        close_btn.setStyleSheet(_wc_style(hover_bg="#FEE2E2" if self.theme.name == "light" else "#451A1A", hover_color=self.theme.error))
         close_btn.clicked.connect(self.close)
         header_layout.addWidget(close_btn)
 
