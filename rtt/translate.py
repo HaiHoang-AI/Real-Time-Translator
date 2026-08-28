@@ -72,53 +72,57 @@ LANG_NAMES = {
 
 
 def _clean_llm_translation(raw: str) -> str:
-    """Strip out any LLM prefixes, quotes, meta-commentary, or refusal hallucinations."""
+    """Strip out reasoning/thinking blocks, conversational preambles, prefixes, quotes, and loop hallucinations."""
     if not raw:
         return ""
     res = raw.strip()
 
-    # Strip markdown codeblocks if any
+    # 1. Strip reasoning / thinking blocks (e.g. <think>...</think> from Qwen/DeepSeek/Ollama)
+    res = re.sub(r'<think>.*?</think>', '', res, flags=re.DOTALL | re.IGNORECASE).strip()
+
+    # 2. Strip markdown codeblocks if any
     if res.startswith("```") and res.endswith("```"):
         lines = res.splitlines()
         if len(lines) >= 3:
             res = "\n".join(lines[1:-1]).strip()
-
-    # If the response contains apology / conversational boilerplate, extract the quoted/actual text
-    if any(k in res.lower() for k in ("xin lỗi", "dưới đây là", "không cần dịch", "câu trả lời", "bản dịch lại")):
-        # Check if there is a quoted section
-        quotes = re.findall(r'["“](.+?)["”]', res, flags=re.DOTALL)
-        if quotes:
-            res = quotes[-1].strip()
         else:
-            lines = [line.strip() for line in res.splitlines() if line.strip()]
-            valid_lines = [
-                l for l in lines
-                if not any(l.lower().startswith(k) for k in ("tôi xin lỗi", "xin lỗi", "dưới đây là", "vì câu này", "lưu ý", "ghi chú", "đây là"))
-            ]
-            if valid_lines:
-                res = " ".join(valid_lines).strip()
+            res = re.sub(r'^```[\w]*\n?|```$', '', res).strip()
 
-    # Strip outer quotes
-    if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')) or (res.startswith("'") and res.endswith("'")):
-        res = res[1:-1].strip()
+    # 3. Iteratively strip preamble sentences, conversational filler, and meta-intents
+    preamble_patterns = [
+        # Acknowledgments: "Chắc chắn rồi!", "Được rồi!", "Vâng ạ."
+        r'^(?:Được rồi|Chắc chắn rồi|Chắc chắn|Vâng|Dạ|OK|Okay|Tất nhiên|Tuyệt vời|Đồng ý|Dạ được|Dạ vâng)[,\.!\s]+\s*',
+        # Intent statements with parenthesized language: "Tôi sẽ dịch câu thoại này sang tiếng Việt (Vietnamese)..."
+        r'^(?:tôi|mình|em|AI)?\s*(?:sẽ|đang|xin phép)?\s*(?:dịch|chuyển ngữ|phiên dịch|giúp bạn dịch)\s*(?:câu thoại|câu|đoạn|văn bản|nội dung)?\s*(?:này)?\s*(?:sang|qua)?\s*tiếng\s*[\w\u00C0-\u1EF9\s]+(?:\s*\([^\)]*\))?[,\.:!\?]*\s*',
+        r'^(?:tôi|mình|em)?\s*(?:sẽ|đang)?\s*(?:dịch|chuyển ngữ)[^\.\n:!]*[\.\n:!]+\s*',
+        # Prefixes like "Dịch sang tiếng Việt (Vietnamese):", "Bản dịch:", "Tiếng Việt:"
+        r'^(?:Dịch\s*sang\s*tiếng\s*[\w\u00C0-\u1EF9\s]+(?:\s*\([^\)]*\))?|Bản\s*dịch|Lời\s*dịch|Câu\s*dịch|Translation|Vietnamese|Tiếng\s*Việt)\s*[:：\-]\s*',
+        # Intro boilerplate: "Dưới đây là bản dịch của câu thoại...", "bản dịch của câu thoại này là:..."
+        r'^(?:(?:Dưới đây|Sau đây|Đây)\s+là\s+)?(?:bản dịch|câu dịch|kết quả dịch|phần dịch|lời dịch)\s*(?:của\s*(?:câu thoại|câu|đoạn|nội dung)?\s*(?:này)?)?\s*(?:sang\s*tiếng\s*[\w\u00C0-\u1EF9\s]+(?:\s*\([^\)]*\))?)?\s*(?:là)?\s*[:：\-,\.]*\s*',
+        r'^(?:Dưới đây|Sau đây)\s+là\s*[:：\-,\.]+\s*',
+        # English preambles
+        r'^(?:Sure|Certainly|Okay|OK|Of course)[,!\.]*\s*',
+        r'^(?:Here is the translation|Translation to [a-zA-Z]+|Translating to [a-zA-Z]+|I will translate this|Translated text)[:：\-,\.]*\s*',
+    ]
 
-    # Match prefix patterns like:
-    # "Dịch sang tiếng Việt (Vietnamese): ..."
-    # "Dịch sang tiếng Việt: ..."
-    # "Bản dịch: ..."
-    # "Vietnamese: ..."
-    prefix_regex = r'(?:Dịch\s*sang\s*tiếng\s*[\w\u00C0-\u1EF9\s]+(?:\s*\([^\)]*\))?|Bản\s*dịch|Lời\s*dịch|Câu\s*dịch|Translation|Vietnamese|Tiếng\s*Việt)\s*[:：\-]\s*'
-    if re.search(prefix_regex, res, flags=re.IGNORECASE):
-        parts = re.split(prefix_regex, res, flags=re.IGNORECASE)
-        for p in reversed(parts):
-            if p.strip():
-                res = p.strip()
-                break
+    max_passes = 10
+    for _ in range(max_passes):
+        changed = False
+        # Strip outer quotes first
+        if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')) or (res.startswith("'") and res.endswith("'")):
+            res = res[1:-1].strip()
+            changed = True
 
-    # Strip any remaining leading prefix
-    res = re.sub(r'^(?:Dịch\s*sang\s*tiếng\s*[\w\u00C0-\u1EF9\s]+(?:\s*\([^\)]*\))?|Bản\s*dịch|Lời\s*dịch|Câu\s*dịch|Translation|Vietnamese|Tiếng\s*Việt)\s*[:：\-]\s*', '', res, flags=re.IGNORECASE).strip()
+        for pat in preamble_patterns:
+            new_res = re.sub(pat, '', res, flags=re.IGNORECASE).strip()
+            if new_res != res and new_res:
+                res = new_res
+                changed = True
 
-    # Strip again outer quotes
+        if not changed:
+            break
+
+    # Strip outer quotes one final time
     if (res.startswith('"') and res.endswith('"')) or (res.startswith('“') and res.endswith('”')) or (res.startswith("'") and res.endswith("'")):
         res = res[1:-1].strip()
 
@@ -408,11 +412,12 @@ class GeminiTranslator:
             f"Bạn là chuyên gia thông dịch viên cabin trực tiếp từ {src_name} sang {tgt_name}.\n"
             f"QUY TẮC BẮT BUỘC:\n"
             f"1. Dịch chuẩn xác, tự nhiên, bám sát ngữ cảnh nói/thuyết trình.\n"
-            f"2. Tuyệt đối KHÔNG lặp lại các tiền tố như 'Dịch sang...', 'Bản dịch:', 'Vietnamese:', KHÔNG giải thích hay bình luận.\n"
-            f"3. CHỈ XUẤT DUY NHẤT BẢN DỊCH {tgt_name} thuần túy, không kèm dấu ngoặc kép."
+            f"2. Tuyệt đối KHÔNG chào hỏi, KHÔNG mở đầu bằng 'Được rồi...', 'Chắc chắn rồi...', 'Tôi sẽ dịch...', 'Vâng...', KHÔNG lặp lại các tiền tố như 'Dịch sang...', 'Bản dịch:', 'Vietnamese:', KHÔNG giải thích hay bình luận.\n"
+            f"3. BẮT ĐẦU NGAY VÀO CÂU DỊCH ĐẦU TIÊN.\n"
+            f"4. CHỈ XUẤT DUY NHẤT BẢN DỊCH {tgt_name} thuần túy, không kèm dấu ngoặc kép."
         )
 
-        user_content = f"{system_instruction}\n{topic_section}{context_section}{glossary_section}\nCâu cần dịch: {text}"
+        user_content = f"{topic_section}{context_section}{glossary_section}\nCâu cần dịch: {text}"
 
         candidates = [
             ("v1beta", self.model),
@@ -426,6 +431,9 @@ class GeminiTranslator:
         ]
 
         payload = {
+            "system_instruction": {
+                "parts": [{"text": system_instruction}]
+            },
             "contents": [
                 {
                     "parts": [{"text": user_content}]
@@ -443,6 +451,9 @@ class GeminiTranslator:
 
         # Payload fallback without thinkingConfig for older versions
         payload_plain = {
+            "system_instruction": {
+                "parts": [{"text": system_instruction}]
+            },
             "contents": [
                 {
                     "parts": [{"text": user_content}]
@@ -584,10 +595,11 @@ class OllamaTranslator:
             f"Bạn là hệ thống dịch cabin phụ đề tự động từ {src_name} sang {tgt_name}.\n"
             f"Nhiệm vụ: Dịch trung thực và tự nhiên câu thoại sang {tgt_name}.\n"
             f"QUY TẮC BẮT BUỘC:\n"
-            f"1. Dịch trung thực câu thoại sang {tgt_name}. Tuyệt đối KHÔNG trả lời câu hỏi, KHÔNG đối thoại, KHÔNG xin lỗi, KHÔNG giải thích, KHÔNG từ chối dịch.\n"
+            f"1. Dịch trung thực câu thoại sang {tgt_name}. Tuyệt đối KHÔNG trả lời câu hỏi, KHÔNG đối thoại, KHÔNG chào hỏi, KHÔNG mở đầu bằng 'Được rồi...', 'Chắc chắn rồi...', 'Tôi sẽ dịch...', 'Vâng...', KHÔNG giải thích, KHÔNG từ chối dịch.\n"
             f"2. Tuyệt đối KHÔNG lặp lại các tiền tố như 'Dịch sang...', 'Bản dịch:', 'Vietnamese:', 'Tiếng Việt:' hoặc tên chủ đề.\n"
-            f"3. Giữ đúng đại từ nhân xưng và ngữ điệu tự nhiên của người nói.\n"
-            f"4. CHỈ XUẤT DUY NHẤT câu dịch {tgt_name} thuần túy, không có chữ Hán, không kèm ngoặc kép."
+            f"3. BẮT ĐẦU NGAY VÀO CÂU DỊCH ĐẦU TIÊN.\n"
+            f"4. Giữ đúng đại từ nhân xưng và ngữ điệu tự nhiên của người nói.\n"
+            f"5. CHỈ XUẤT DUY NHẤT câu dịch {tgt_name} thuần túy, không có chữ Hán, không kèm ngoặc kép."
         )
 
         messages = [
