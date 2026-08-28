@@ -36,7 +36,7 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
 )
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
 if TYPE_CHECKING:
     from rtt.settings import AppSettings
@@ -48,6 +48,58 @@ class OverlayBridge(QObject):
     partial_changed = Signal(str)
     committed_changed = Signal(str)
     status_changed = Signal(str)
+    paused_changed = Signal(bool)
+    pause_requested = Signal()
+
+
+class OverlayIconButton(QPushButton):
+    """Small, subtle translucent button for overlay controls (Play/Pause)."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setFixedSize(24, 24)
+        self.setCursor(Qt.PointingHandCursor)
+        self._is_paused = False
+        self._update_ui()
+
+    def set_paused(self, paused: bool) -> None:
+        if self._is_paused != paused:
+            self._is_paused = paused
+            self._update_ui()
+
+    def _update_ui(self) -> None:
+        if self._is_paused:
+            self.setText("▶")
+            self.setToolTip("Tiếp tục dịch")
+            color = "#10B981"
+            bg = "rgba(16, 185, 129, 0.25)"
+            border = "1px solid rgba(16, 185, 129, 0.45)"
+        else:
+            self.setText("⏸")
+            self.setToolTip("Tạm dừng dịch")
+            color = "rgba(255, 255, 255, 0.65)"
+            bg = "rgba(255, 255, 255, 0.08)"
+            border = "1px solid rgba(255, 255, 255, 0.14)"
+
+        self.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: {color};
+                border: {border};
+                border-radius: 12px;
+                font-size: 10px;
+                font-weight: bold;
+                padding: 0px;
+            }}
+            QPushButton:hover {{
+                background-color: rgba(255, 255, 255, 0.24);
+                color: #FFFFFF;
+                border: 1px solid rgba(255, 255, 255, 0.38);
+            }}
+            QPushButton:pressed {{
+                background-color: rgba(16, 185, 129, 0.4);
+            }}
+        """)
 
 
 class _DualSubtitleWidget(QWidget):
@@ -77,7 +129,9 @@ class _DualSubtitleWidget(QWidget):
         self._partial_text = ""
 
         self._anim_progress = 1.0  # 0.0 -> 1.0
-        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        self.pause_btn = OverlayIconButton(self)
+        self.pause_btn.hide()
 
         self._anim = QPropertyAnimation(self, b"animProgress", self)
         self._anim.setDuration(280)
@@ -196,7 +250,7 @@ class _DualSubtitleWidget(QWidget):
         pad_y = 14
 
         target_card_w = min(self._card_width, self.width() - 48)
-        max_wrap_width = max(280, target_card_w - (pad_x * 2))
+        max_wrap_width = max(260, target_card_w - (pad_x * 2) - 28)
 
         prev_lines = self._wrap(m_prev, self._prev_text, max_wrap_width)[:3] if self._prev_text else []
         curr_lines = self._wrap(m_curr, self._curr_text, max_wrap_width)[:3] if self._curr_text else []
@@ -234,10 +288,11 @@ class _DualSubtitleWidget(QWidget):
             max_line_w = max(max_line_w, m_part.horizontalAdvance(l))
 
         if max_line_w == 0:
+            self.pause_btn.hide()
             painter.end()
             return
 
-        card_w = max(target_card_w, min(self.width() - 48, max_line_w + (pad_x * 2)))
+        card_w = max(target_card_w, min(self.width() - 48, max_line_w + (pad_x * 2) + 28))
         total_text_h = (y_part + len(part_lines)*h_part if part_lines else y_curr + len(curr_lines)*h_curr) - (y_top - m_prev.ascent())
         card_h = total_text_h + (pad_y * 2)
 
@@ -252,6 +307,16 @@ class _DualSubtitleWidget(QWidget):
 
         card_rect = QRectF(card_x, min_y, card_w, card_h)
 
+        # Position small subtle pause/resume button at top-right corner of subtitle card
+        btn_w = self.pause_btn.width()
+        btn_x = int(card_x + card_w - btn_w - 10)
+        btn_y = int(min_y + 8)
+        if self.pause_btn.pos() != QPoint(btn_x, btn_y):
+            self.pause_btn.move(btn_x, btn_y)
+        if not self.pause_btn.isVisible():
+            self.pause_btn.show()
+        self.pause_btn.raise_()
+
         # ── Step 1: Draw Background Card (Rounded Claymorphic) ──
         if self._bg_opacity > 0.01:
             bg_alpha = int(255 * self._bg_opacity)
@@ -264,7 +329,7 @@ class _DualSubtitleWidget(QWidget):
             if self._alignment == "left":
                 return card_x + pad_x
             elif self._alignment == "right":
-                return card_x + card_w - pad_x - line_w
+                return card_x + card_w - pad_x - line_w - 16
             else:  # center
                 return card_x + (card_w - line_w) / 2.0
 
@@ -374,9 +439,18 @@ class _DualSubtitleWidget(QWidget):
 
 
 class SubtitleOverlay(QWidget):
-    def __init__(self, bridge: OverlayBridge, settings: Optional[AppSettings] = None) -> None:
+    def __init__(
+        self,
+        bridge: OverlayBridge,
+        settings: Optional[AppSettings] = None,
+        session: Optional[object] = None,
+    ) -> None:
         super().__init__()
         self._settings = settings
+        self._session = session
+        self._bridge = bridge
+        self._is_paused = False
+
         self.setWindowFlags(
             Qt.FramelessWindowHint
             | Qt.WindowStaysOnTopHint
@@ -384,7 +458,7 @@ class SubtitleOverlay(QWidget):
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
-        self._click_through(True)
+        self._click_through(False)
 
         use_custom = settings.data.ui.use_custom_fonts if settings else False
         try:
@@ -418,10 +492,35 @@ class SubtitleOverlay(QWidget):
         bridge.partial_changed.connect(self.subtitle_widget.set_partial_text)
         bridge.committed_changed.connect(self.subtitle_widget.set_committed_text)
         bridge.status_changed.connect(self._show_status)
+        bridge.paused_changed.connect(self._on_pause_changed)
+
+        if hasattr(self.subtitle_widget, "pause_btn"):
+            self.subtitle_widget.pause_btn.clicked.connect(self._toggle_pause)
+
+        if self._session is not None:
+            if hasattr(self._session, "paused_changed"):
+                self._session.paused_changed.connect(self._on_pause_changed)
+            if hasattr(self._session, "is_paused"):
+                self._on_pause_changed(self._session.is_paused)
+
         self._drag_origin: QPoint | None = None
 
         if settings is not None:
             settings.changed.connect(self._on_settings_changed)
+
+    def _toggle_pause(self) -> None:
+        if self._session and hasattr(self._session, "toggle_pause"):
+            self._session.toggle_pause()
+        elif self._bridge and hasattr(self._bridge, "pause_requested"):
+            self._bridge.pause_requested.emit()
+        else:
+            self._is_paused = not self._is_paused
+            self._on_pause_changed(self._is_paused)
+
+    def _on_pause_changed(self, is_paused: bool) -> None:
+        self._is_paused = is_paused
+        if hasattr(self.subtitle_widget, "pause_btn"):
+            self.subtitle_widget.pause_btn.set_paused(is_paused)
 
     def _apply_position(self, settings: Optional[AppSettings] = None) -> None:
         """Position the overlay on the correct screen at the correct location."""

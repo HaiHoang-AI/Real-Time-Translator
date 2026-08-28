@@ -349,6 +349,23 @@ class SessionManager(QObject):
         self.session_list_changed.emit()
         return sess
 
+    @property
+    def is_paused(self) -> bool:
+        return self.active_session.is_paused if self.active_session else False
+
+    def toggle_pause(self) -> bool:
+        if self.active_session:
+            return self.active_session.toggle_pause()
+        return False
+
+    def pause(self) -> None:
+        if self.active_session:
+            self.active_session.pause()
+
+    def resume(self) -> None:
+        if self.active_session:
+            self.active_session.resume()
+
     def switch_to(self, session_id: str) -> Optional[TranscriptSession]:
         """Switch active session to an existing session."""
         if self.active_session and self.active_session.session_id == session_id:

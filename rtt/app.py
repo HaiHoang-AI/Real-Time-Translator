@@ -194,6 +194,7 @@ class Pipeline:
             self.translator.context.set_topic(new_sess.session_name if new_sess else "")
 
     def _on_pause_toggled(self, is_paused: bool) -> None:
+        self.bridge.paused_changed.emit(is_paused)
         if is_paused:
             # Immediately clear overlay subtitle display
             self.bridge.partial_changed.emit("")
@@ -672,7 +673,9 @@ def main() -> None:
     print(f"[app] custom fonts loaded: {font_ok}")
 
     bridge = OverlayBridge()
-    overlay = SubtitleOverlay(bridge, settings=settings)
+    if session_mgr:
+        bridge.pause_requested.connect(session_mgr.toggle_pause)
+    overlay = SubtitleOverlay(bridge, settings=settings, session=session_mgr)
     overlay.show()
 
     # Create single unified MainWindow containing HUD, Transcript, and Settings tabs
