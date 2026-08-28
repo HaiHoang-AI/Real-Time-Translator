@@ -1640,7 +1640,7 @@ class TranscriptPanel(QWidget):
 
     def _update_pause_ui(self, is_paused: bool) -> None:
         if is_paused:
-            self.pause_btn.setText("▶ Tiếp tục")
+            self.pause_btn.setText("Tiếp tục")
             self.pause_btn.setStyleSheet(f"""
                 QPushButton {{
                     background-color: {self.theme.accent};

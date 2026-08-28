@@ -53,53 +53,68 @@ class OverlayBridge(QObject):
 
 
 class OverlayIconButton(QPushButton):
-    """Small, subtle translucent button for overlay controls (Play/Pause)."""
+    """Small, subtle borderless button for overlay controls (Play/Pause) with vector rendering."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setFixedSize(24, 24)
         self.setCursor(Qt.PointingHandCursor)
         self._is_paused = False
-        self._update_ui()
+        self._hovered = False
+        self.setToolTip("Tạm dừng dịch")
+        self.setStyleSheet("QPushButton { background: transparent; border: none; }")
 
     def set_paused(self, paused: bool) -> None:
         if self._is_paused != paused:
             self._is_paused = paused
-            self._update_ui()
+            self.setToolTip("Tiếp tục dịch" if paused else "Tạm dừng dịch")
+            self.update()
 
-    def _update_ui(self) -> None:
+    def enterEvent(self, event) -> None:
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._hovered = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, _event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Subtle hover background without any harsh border
+        if self._hovered:
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(255, 255, 255, 28))
+            painter.drawRoundedRect(self.rect(), 5, 5)
+
         if self._is_paused:
-            self.setText("▶")
-            self.setToolTip("Tiếp tục dịch")
-            color = "#10B981"
-            bg = "rgba(16, 185, 129, 0.25)"
-            border = "1px solid rgba(16, 185, 129, 0.45)"
-        else:
-            self.setText("⏸")
-            self.setToolTip("Tạm dừng dịch")
-            color = "rgba(255, 255, 255, 0.65)"
-            bg = "rgba(255, 255, 255, 0.08)"
-            border = "1px solid rgba(255, 255, 255, 0.14)"
+            # Draw crisp geometric Play triangle (vector shape, NO emoji)
+            color = QColor(16, 185, 129, 255 if self._hovered else 220)  # Emerald green
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(color)
 
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {bg};
-                color: {color};
-                border: {border};
-                border-radius: 12px;
-                font-size: 10px;
-                font-weight: bold;
-                padding: 0px;
-            }}
-            QPushButton:hover {{
-                background-color: rgba(255, 255, 255, 0.24);
-                color: #FFFFFF;
-                border: 1px solid rgba(255, 255, 255, 0.38);
-            }}
-            QPushButton:pressed {{
-                background-color: rgba(16, 185, 129, 0.4);
-            }}
-        """)
+            path = QPainterPath()
+            path.moveTo(8.5, 6.0)
+            path.lineTo(17.5, 12.0)
+            path.lineTo(8.5, 18.0)
+            path.closeSubpath()
+            painter.drawPath(path)
+        else:
+            # Draw crisp geometric Pause bars (vector shape, NO emoji)
+            alpha = 240 if self._hovered else 150
+            color = QColor(255, 255, 255, alpha)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(color)
+
+            # Left bar
+            painter.drawRoundedRect(QRectF(7.0, 6.5, 3.0, 11.0), 1.0, 1.0)
+            # Right bar
+            painter.drawRoundedRect(QRectF(14.0, 6.5, 3.0, 11.0), 1.0, 1.0)
+
+        painter.end()
 
 
 class _DualSubtitleWidget(QWidget):
