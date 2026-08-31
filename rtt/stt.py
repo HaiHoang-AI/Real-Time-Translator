@@ -197,6 +197,17 @@ class StreamingTranscriber:
         if self._thread is not None:
             self._thread.join(timeout=5)
 
+    def flush_buffer(self) -> None:
+        """Discard all buffered audio and reset partial state.
+
+        Called by the capture gating logic when DUB starts speaking to prevent
+        any TTS-contaminated audio from being processed by Whisper.
+        """
+        with self._buf_lock:
+            self._buf = np.zeros(0, dtype=np.float32)
+        self._last_partial = ""
+        self.on_partial("")
+
     # ----------------------------------------------------------------- loop
 
     def _run(self) -> None:
@@ -436,6 +447,17 @@ class MoonshineStreamingTranscriber:
             self._transcriber.close()
         except Exception:
             pass
+
+    def flush_buffer(self) -> None:
+        """Discard all buffered audio and reset partial state.
+
+        Called by the capture gating logic when DUB starts speaking to prevent
+        any TTS-contaminated audio from being processed.
+        """
+        with self._buf_lock:
+            self._buf_queue.clear()
+        self._listener._last_partial = ""
+        self.on_partial("")
 
     def _run(self) -> None:
         tick = 0.08

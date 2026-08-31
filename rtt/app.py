@@ -260,7 +260,13 @@ class Pipeline:
         cap = LoopbackCapture()
         res = MonoResampler16k(cap.rate, cap.channels)
         cap.start()
+
+        # DUB feedback-loop prevention: gate capture while TTS is speaking.
+        # gate_tail_until: monotonic timestamp until which we keep gating AFTER
+        # dub.active clears, to avoid capturing tail/reverb of TTS output.
+        GATE_TAIL_S = 0.4  # 400ms tail guard after TTS finishes
         gate_tail_until = 0.0
+        was_gated = False
 
         from rtt.stt import RATE as STT_RATE
 
@@ -278,6 +284,40 @@ class Pipeline:
                     continue
 
                 chunk = res.process(cap.read_available())
+
+                # --- DUB Capture Gating ---
+                # Check if DUB is currently speaking (or within tail guard)
+                dub_active = (
+                    self.dub is not None
+                    and self.dub.active.is_set()
+                )
+                now = time.monotonic()
+                is_gated = dub_active or now < gate_tail_until
+
+                if is_gated:
+                    if not was_gated:
+                        # Entering gate: flush STT buffer to remove any
+                        # TTS-contaminated audio already in the pipeline
+                        self.stt.flush_buffer()
+                        was_gated = True
+                    # Discard captured audio (it's mixed TTS + ducked original)
+                    # but keep the time clock synchronized
+                    if chunk.size:
+                        pushed += chunk.size
+                    if chunk.size == 0:
+                        time.sleep(chunk_s / 2)
+                    continue
+
+                if was_gated:
+                    # Just exited gate: set tail guard and flush once more
+                    # to discard any residual TTS tail in the buffer
+                    gate_tail_until = now + GATE_TAIL_S
+                    self.stt.flush_buffer()
+                    was_gated = False
+                    # Re-check: we're now in tail guard territory
+                    continue
+
+                # --- Normal capture (no DUB interference) ---
                 if chunk.size == 0:
                     time.sleep(chunk_s / 2)
 
