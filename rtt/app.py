@@ -234,6 +234,10 @@ class Pipeline:
             return
         self._last_commit_text = text
 
+        # Anti-echo protection: if transcribed text is DUB's own voice echoing back
+        if self.dub and self.dub.is_recent_echo(text):
+            return
+
         tgt = self._tgt_lang()
         src = self._src_lang()
         if tgt and tgt != src:
@@ -261,18 +265,13 @@ class Pipeline:
         res = MonoResampler16k(cap.rate, cap.channels)
         cap.start()
 
-        # DUB feedback-loop prevention: gate capture while TTS is speaking.
-        # gate_tail_until: monotonic timestamp until which we keep gating AFTER
-        # dub.active clears, to avoid capturing tail/reverb of TTS output.
-        GATE_TAIL_S = 0.4  # 400ms tail guard after TTS finishes
-        gate_tail_until = 0.0
-        was_gated = False
-
         from rtt.stt import RATE as STT_RATE
 
         chunk_s = cap.chunk_frames / cap.rate
         pushed = 0
         t_start = time.monotonic()
+        last_dub_time = 0.0
+
         try:
             while not self._stop.is_set():
                 # If paused, drop audio capture and idle lightly without STT
@@ -283,41 +282,41 @@ class Pipeline:
                     time.sleep(chunk_s)
                     continue
 
-                chunk = res.process(cap.read_available())
+                raw_chunk = cap.read_available()
+                chunk = res.process(raw_chunk)
 
-                # --- DUB Capture Gating ---
-                # Check if DUB is currently speaking (or within tail guard)
-                dub_active = (
+                # DUB feedback prevention:
+                # When DUB TTS is actively speaking out of the speakers, WASAPI loopback
+                # captures loud TTS audio. We substitute silence for those chunks so STT
+                # does not hear TTS and the STT timing clock remains 100% accurate.
+                is_dubbing = (
                     self.dub is not None
-                    and self.dub.active.is_set()
+                    and getattr(self.dub, "enabled", False)
+                    and getattr(self.dub, "is_speaking", False)
                 )
                 now = time.monotonic()
-                is_gated = dub_active or now < gate_tail_until
 
-                if is_gated:
-                    if not was_gated:
-                        # Entering gate: flush STT buffer to remove any
-                        # TTS-contaminated audio already in the pipeline
-                        self.stt.flush_buffer()
-                        was_gated = True
-                    # Discard captured audio (it's mixed TTS + ducked original)
-                    # but keep the time clock synchronized
+                if is_dubbing:
+                    last_dub_time = now
                     if chunk.size:
+                        silence = np.zeros(chunk.size, dtype=np.float32)
+                        self.stt.push(silence)
                         pushed += chunk.size
-                    if chunk.size == 0:
+                    else:
                         time.sleep(chunk_s / 2)
                     continue
 
-                if was_gated:
-                    # Just exited gate: set tail guard and flush once more
-                    # to discard any residual TTS tail in the buffer
-                    gate_tail_until = now + GATE_TAIL_S
-                    self.stt.flush_buffer()
-                    was_gated = False
-                    # Re-check: we're now in tail guard territory
+                # 150ms buffer drain after DUB finishes speaking
+                if (now - last_dub_time) < 0.15:
+                    if chunk.size:
+                        silence = np.zeros(chunk.size, dtype=np.float32)
+                        self.stt.push(silence)
+                        pushed += chunk.size
+                    else:
+                        time.sleep(chunk_s / 2)
                     continue
 
-                # --- Normal capture (no DUB interference) ---
+                # Normal audio path: zero-lag continuous streaming
                 if chunk.size == 0:
                     time.sleep(chunk_s / 2)
 

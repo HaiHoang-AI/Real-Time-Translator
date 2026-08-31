@@ -105,19 +105,61 @@ class DubPlayer:
         self.max_speed = max_speed
 
         self.enabled = True
-        self.active = threading.Event()  # capture gate: set while audible
+        self.active = threading.Event()  # ducking gate: set while audible
+        self.is_speaking = False         # physical playback active flag
+        self._recent_spoken: list[tuple[float, str]] = []
+        self._history_lock = threading.Lock()
         self._queue: "queue.Queue[str]" = queue.Queue()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._stream = None
         self._pa = None
-        self._drain_s = 1.0
+        self._drain_s = 0.6
+
+    def _record_spoken(self, text: str) -> None:
+        text = text.strip()
+        if not text:
+            return
+        now = time.time()
+        with self._history_lock:
+            self._recent_spoken.append((now, text))
+            # Keep history to last 15 items and within 30s
+            self._recent_spoken = [(t, s) for t, s in self._recent_spoken if (now - t) < 30.0][-15:]
+
+    def is_recent_echo(self, candidate: str, max_age_s: float = 15.0) -> bool:
+        """Check if incoming candidate string is an echo of recently spoken DUB text."""
+        if not candidate:
+            return False
+        import re
+        cand_clean = re.sub(r'[^\w\s]', '', candidate.lower()).strip()
+        if not cand_clean or len(cand_clean) < 3:
+            return False
+        cand_words = set(cand_clean.split())
+        now = time.time()
+
+        with self._history_lock:
+            self._recent_spoken = [(t, s) for t, s in self._recent_spoken if (now - t) < max_age_s]
+            for _, spoken in self._recent_spoken:
+                spoken_clean = re.sub(r'[^\w\s]', '', spoken.lower()).strip()
+                if not spoken_clean:
+                    continue
+                # Exact or Substring match
+                if cand_clean in spoken_clean or spoken_clean in cand_clean:
+                    return True
+                # Word overlap (Jaccard / containment)
+                spoken_words = set(spoken_clean.split())
+                overlap = len(cand_words & spoken_words)
+                min_len = min(len(cand_words), len(spoken_words))
+                if min_len > 0 and (overlap / min_len) >= 0.60:
+                    return True
+        return False
 
     def speak(self, text: str) -> None:
         if not getattr(self, "enabled", True):
             return
         text = text.strip()
         if text:
+            self._record_spoken(text)
             self._queue.put(text)
 
     def start(self) -> None:
@@ -153,8 +195,8 @@ class DubPlayer:
             try:
                 latency = self._stream.get_output_latency()
             except OSError:
-                latency = 0.5
-            self._drain_s = max(0.8, latency + 0.4)
+                latency = 0.2
+            self._drain_s = max(0.4, latency + 0.2)
         return self._stream
 
     def _speed_for_backlog(self) -> float:
@@ -166,7 +208,7 @@ class DubPlayer:
         idle_since: float | None = None
         while not self._stop.is_set():
             try:
-                text = self._queue.get(timeout=0.2)
+                text = self._queue.get(timeout=0.1)
             except queue.Empty:
                 if (
                     self.active.is_set()
@@ -185,9 +227,14 @@ class DubPlayer:
                 if not self.active.is_set():
                     self.active.set()
                     self.ducker.duck()
-                stream.write(audio.tobytes())  # blocking write = natural pacing
+                self.is_speaking = True
+                try:
+                    stream.write(audio.tobytes())  # blocking write = natural pacing
+                finally:
+                    self.is_speaking = False
                 idle_since = time.time()
             except Exception as exc:  # noqa: BLE001 - keep the voice alive
+                self.is_speaking = False
                 print(f"[dub] error: {exc}")
 
 
