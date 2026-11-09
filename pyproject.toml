@@ -12,6 +12,7 @@ dependencies = [
     "nvidia-cublas-cu12>=12.9.2.10",
     "nvidia-cudnn-cu12>=9.24.0.43",
     "piper-tts>=1.6.0",
+    "psutil>=5.9",
     "pyaudiowpatch>=0.2.12.8",
     "pycaw>=20251023",
     "pyside6>=6.11.1",

@@ -128,8 +128,12 @@ uv run python -m rtt.app --src en --tgt vi --console
 
 ## ⌨️ Phím Tắt & Điều Khiển
 
+Phím tắt toàn cục — hoạt động cả khi đang xem video toàn màn hình ở ứng dụng khác:
+
 * **`Ctrl + Alt + E`**: Ẩn / Hiện Bảng Điều Khiển Chính (MainWindow).
-* **Khay hệ thống (System Tray)**: Nhấp chuột phải vào biểu tượng khay để bật menu điều khiển hoặc Thoát ứng dụng hoàn toàn.
+* **`Ctrl + Alt + P`**: Tạm dừng / Tiếp tục dịch.
+* **`Ctrl + Alt + S`**: Khoá phụ đề (chuột xuyên qua) / Mở khoá để kéo phụ đề.
+* **Khay hệ thống (System Tray)**: Nhấp chuột trái để mở cửa sổ; chuột phải để bật menu điều khiển hoặc Thoát ứng dụng hoàn toàn.
 * **Di chuyển phụ đề Overlay**: Nhấn giữ chuột trái vào thanh phụ đề để kéo đến vị trí mong muốn trên màn hình.
 
 ---

@@ -49,15 +49,28 @@ def load_custom_fonts() -> bool:
     return _fonts_loaded
 
 
-def font_ui(use_custom: bool = True) -> str:
+_prefer_custom = True
+
+
+def set_prefer_custom_fonts(enabled: bool) -> None:
+    """App-wide default for font_ui()/font_mono() (the settings toggle)."""
+    global _prefer_custom
+    _prefer_custom = bool(enabled)
+
+
+def font_ui(use_custom: Optional[bool] = None) -> str:
     """Return the primary UI font family name."""
+    if use_custom is None:
+        use_custom = _prefer_custom
     if use_custom and _fonts_loaded:
         return "Be Vietnam Pro"
     return "Segoe UI"
 
 
-def font_mono(use_custom: bool = True) -> str:
+def font_mono(use_custom: Optional[bool] = None) -> str:
     """Return the monospace font family name."""
+    if use_custom is None:
+        use_custom = _prefer_custom
     if use_custom and _fonts_loaded:
         return "IBM Plex Mono"
     return "Consolas"
@@ -160,14 +173,34 @@ LIGHT = ThemeColors(
 THEMES: dict[str, ThemeColors] = {"dark": DARK, "light": LIGHT}
 
 
+def system_prefers_dark() -> bool:
+    """True when Windows/Qt reports a dark color scheme (Qt >= 6.5)."""
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QGuiApplication
+
+        if QGuiApplication.instance() is None:
+            return True
+        scheme = QGuiApplication.styleHints().colorScheme()
+        if scheme == Qt.ColorScheme.Light:
+            return False
+        if scheme == Qt.ColorScheme.Dark:
+            return True
+    except Exception:
+        pass
+    return True
+
+
 def get_theme(name: str) -> ThemeColors:
-    """Get a theme by name. 'auto' defaults to dark."""
+    """Get a theme by name. 'auto' follows the OS light/dark setting."""
+    if name == "auto":
+        return DARK if system_prefers_dark() else LIGHT
     return THEMES.get(name, DARK)
 
 
 # ──────────────────────────────────────── QSS generation ───────────
 
-def generate_stylesheet(theme: ThemeColors, use_custom_fonts: bool = True) -> str:
+def generate_stylesheet(theme: ThemeColors, use_custom_fonts: Optional[bool] = None) -> str:
     """Generate a full QSS stylesheet string for the given theme in Playful Claymorphism style."""
     ui = font_ui(use_custom_fonts)
     mono = font_mono(use_custom_fonts)
@@ -508,6 +541,16 @@ QPushButton[class="tab-inactive"]:hover {{
     color: {theme.text};
 }}
 
+/* ── Tooltips ────────────────────────────────────── */
+QToolTip {{
+    background-color: {theme.raised};
+    color: {theme.text};
+    border: 1px solid {theme.border_strong};
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+}}
+
 /* ── Menu (tray) ─────────────────────────────────── */
 QMenu {{
     background-color: {theme.surface};
@@ -541,6 +584,6 @@ QMenu::separator {{
 """
 
 
-def apply_theme(widget, theme: ThemeColors, use_custom_fonts: bool = True) -> None:
+def apply_theme(widget, theme: ThemeColors, use_custom_fonts: Optional[bool] = None) -> None:
     """Apply a full theme stylesheet to a widget (usually the top-level window)."""
     widget.setStyleSheet(generate_stylesheet(theme, use_custom_fonts))

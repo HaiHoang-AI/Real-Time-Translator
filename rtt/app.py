@@ -24,19 +24,30 @@ from __future__ import annotations
 import argparse
 import os
 import queue
+import re
 import sys
 import threading
 import time
+from typing import Any
 
 import numpy as np
 
 from rtt.audio import LoopbackCapture, MonoResampler16k
-from rtt.history import TranscriptManager, TranscriptSession
 from rtt.settings import AppSettings
 from rtt.stt import SttConfig, StreamingTranscriber, create_transcriber
 from rtt.theme import apply_theme, get_theme, load_custom_fonts
 
 DEBUG = os.environ.get("RTT_DEBUG") == "1"
+
+# English disfluencies ("uh", "um", "uhm", "erm", "hmm", "ah") as whole words,
+# with a trailing comma/space. Kept narrow on purpose: no "like"/"you know".
+_FILLER_RE = re.compile(r"(?i)(?<![\w'])(?:u+h+m*|u+m+|e+r+m+|h+m+|a+h+)(?![\w'])[,.]?\s*")
+
+
+def strip_fillers(text: str) -> str:
+    out = _FILLER_RE.sub("", text)
+    out = re.sub(r"\s{2,}", " ", out).strip(" ,")
+    return out[:1].upper() + out[1:] if out and text[:1].isupper() else out
 
 
 class Pipeline:
@@ -107,14 +118,60 @@ class Pipeline:
                 device=device,
             )
 
-        self.stt = create_transcriber(
-            stt_cfg,
-            on_partial=self._on_partial,
-            on_commit=self._on_commit,
-        )
+        # The STT model is loaded in start() (background thread, after the
+        # translator) — loading it here froze the UI thread for seconds.
+        self._stt_cfg = stt_cfg
+        self.stt = None
+
+        self._dub_loading = False
+        # Configured voice that failed to load — don't retry it on every
+        # unrelated settings change (slider ticks…), only when it changes.
+        self._dub_failed_voice: str | None = None
 
         if settings is not None:
             settings.changed.connect(self._sync_dub_settings)
+
+    def _create_dub(self) -> None:
+        """Load the Piper voice + start the dub player (slow: call off the UI thread)."""
+        if self.dub is not None or self._dub_loading:
+            return
+        self._dub_loading = True
+        try:
+            from rtt.dub import DEFAULT_VOICE, DEFAULT_VOICE_DIR, DubPlayer, PiperSpeaker
+
+            dub_cfg = self.settings.data.dub if self.settings else None
+            configured = (dub_cfg.voice if dub_cfg else "") or DEFAULT_VOICE
+            voice = configured
+            if not (DEFAULT_VOICE_DIR / f"{voice}.onnx").exists():
+                voice = DEFAULT_VOICE
+            self._dub_failed_voice = configured  # cleared below on success
+            self.bridge.status_changed.emit("Đang tải giọng thuyết minh…")
+            player = DubPlayer(
+                speaker=PiperSpeaker(voice=voice),
+                duck_level=dub_cfg.ducking if dub_cfg else 0.18,
+                max_speed=dub_cfg.max_speed if dub_cfg else 1.45,
+            )
+            player.start()
+            self.dub = player
+            self._dub_failed_voice = None
+            print(f"[app] dub voice ready: {voice}")
+        except FileNotFoundError:
+            print("[app] dub disabled: Piper voice not downloaded")
+            self.bridge.status_changed.emit(
+                "Chưa có giọng thuyết minh — tải bằng: python -m piper.download_voices"
+            )
+        except Exception as exc:  # noqa: BLE001 - dub is optional, never kill MT
+            print(f"[app] dub initialization failed: {exc}")
+            self.bridge.status_changed.emit("Không khởi động được thuyết minh")
+        finally:
+            self._dub_loading = False
+
+    def _echo_gate_active(self) -> bool:
+        """True while our own dub voice is audible and must not be captured."""
+        dub = self.dub
+        if dub is None or not dub.enabled or not dub.active.is_set():
+            return False
+        return self.settings is None or self.settings.data.dub.block_self_echo
 
     def _sync_dub_settings(self) -> None:
         if not self.settings:
@@ -130,16 +187,12 @@ class Pipeline:
 
         if is_enabled:
             if self.dub is None:
-                try:
-                    from rtt.dub import DubPlayer
-                    print("[app] Starting DUB interpreter engine live...")
-                    self.dub = DubPlayer(
-                        duck_level=dub_cfg.ducking,
-                        max_speed=dub_cfg.max_speed,
-                    )
-                    self.dub.start()
-                except Exception as exc:
-                    print(f"[app] DUB initialization note: {exc}")
+                from rtt.dub import DEFAULT_VOICE
+
+                if self._dub_loading or self._dub_failed_voice == (dub_cfg.voice or DEFAULT_VOICE):
+                    return
+                # Loading Piper takes seconds — never block the UI thread.
+                threading.Thread(target=self._create_dub, daemon=True, name="dub-init").start()
             else:
                 self.dub.enabled = True
                 self.dub.ducker.duck_level = dub_cfg.ducking
@@ -155,7 +208,7 @@ class Pipeline:
         if self.settings and src == "en" and self.settings.data.ui.src_lang:
             src = self.settings.data.ui.src_lang
         if src == "auto":
-            return self.stt.detected_language or "en"
+            return getattr(self.stt, "detected_language", None) or "en"
         return src or "en"
 
     def _tgt_lang(self) -> str:
@@ -208,9 +261,11 @@ class Pipeline:
                 except Exception:
                     break
         else:
-            # Resumed: clear previous audio buffer so stale audio isn't processed
-            if hasattr(self.stt, "buffer"):
-                self.stt.buffer.clear()
+            # Resumed: drop audio buffered before the pause so stale speech
+            # isn't transcribed (the old code cleared a non-existent attribute).
+            reset = getattr(self.stt, "reset", None)
+            if callable(reset):
+                reset()
 
     def _on_commit(self, text: str, _latency: float) -> None:
         # Check auto inactivity session split
@@ -236,6 +291,10 @@ class Pipeline:
 
         tgt = self._tgt_lang()
         src = self._src_lang()
+        if src == "en" and self.settings is not None and self.settings.data.glossary.strip_fillers:
+            text = strip_fillers(text)
+            if not text:
+                return
         if tgt and tgt != src:
             # ⚡ Speed mode: drop old items if NLLB can't keep up with fast speech
             if self._speed_mode and self._mt_queue.qsize() > 3:
@@ -254,12 +313,28 @@ class Pipeline:
             if self.session is not None:
                 self.session.add_entry("", text)
 
+    def _glossary_kwargs(self) -> dict:
+        g = self.settings.data.glossary if self.settings else None
+        return {
+            "glossary": list(g.entries) if g else [],
+            "auto_lock_caps": g.auto_lock_caps if g else True,
+            "auto_lock_camel": g.auto_lock_camel if g else True,
+        }
+
     # -------------------------------------------------------------- threads
 
     def _capture_loop(self) -> None:
-        cap = LoopbackCapture()
-        res = MonoResampler16k(cap.rate, cap.channels)
-        cap.start()
+        try:
+            cap = LoopbackCapture()
+            res = MonoResampler16k(cap.rate, cap.channels)
+            cap.start()
+        except Exception as exc:  # noqa: BLE001
+            print(f"[capture] cannot open system audio: {exc}")
+            self.bridge.status_changed.emit(
+                "Không bắt được âm thanh hệ thống — kiểm tra thiết bị phát (loa/tai nghe)"
+            )
+            return
+        # Keep muting a short tail after the dub voice stops (device latency).
         gate_tail_until = 0.0
 
         from rtt.stt import RATE as STT_RATE
@@ -280,6 +355,15 @@ class Pipeline:
                 chunk = res.process(cap.read_available())
                 if chunk.size == 0:
                     time.sleep(chunk_s / 2)
+
+                # Feedback gate: the loopback hears our own dub voice too.
+                # Replace it with silence (keeps the timeline continuous) so
+                # it is never transcribed and re-translated in a loop.
+                now = time.monotonic()
+                if self._echo_gate_active():
+                    gate_tail_until = now + 0.35
+                if chunk.size and now < gate_tail_until:
+                    chunk = np.zeros_like(chunk)
 
                 if chunk.size:
                     self.stt.push(chunk)
@@ -366,19 +450,12 @@ class Pipeline:
 
         is_dub = self.args.dub or (self.settings and self.settings.data.dub.enabled)
         if is_dub:
-            from rtt.dub import DubPlayer
+            # A missing Piper voice used to raise here and kill the MT thread,
+            # leaving the app silently translating nothing.
+            self._create_dub()
 
-            self.bridge.status_changed.emit("Đang tải giọng thuyết minh…")
-            duck_level = self.settings.data.dub.ducking if self.settings else 0.18
-            max_speed = self.settings.data.dub.max_speed if self.settings else 1.45
-            self.dub = DubPlayer(duck_level=duck_level, max_speed=max_speed)
-            self.dub.start()
-
-        status_msg = "Chế độ tốc độ cao đã sẵn sàng!" if self._speed_mode else "Mô hình đã sẵn sàng dịch!"
-        self.bridge.status_changed.emit(status_msg)
+        # "Ready" is announced by start() once the speech model is loaded too.
         self._mt_ready.set()
-        time.sleep(2.5)
-        self.bridge.status_changed.emit("")
         # ⚡ Speed mode: faster poll, no live translation overhead
         poll_timeout = 0.05 if self._speed_mode else 0.15
         commit_beam = 1 if self._speed_mode else 4
@@ -396,28 +473,18 @@ class Pipeline:
                 if live:
                     try:
                         t0 = time.perf_counter()
-                        glossary = (
-                            self.settings.data.glossary.entries
-                            if self.settings else []
-                        )
-                        auto_caps = (
-                            self.settings.data.glossary.auto_lock_caps
-                            if self.settings else True
-                        )
-                        auto_camel = (
-                            self.settings.data.glossary.auto_lock_camel
-                            if self.settings else True
-                        )
-                        out = self.translator.translate(
-                            live, src, tgt, beam=1,
-                            glossary=glossary,
-                            auto_lock_caps=auto_caps,
-                            auto_lock_camel=auto_camel,
-                        )
+                        preview = getattr(self.translator, "translate_preview", None)
+                        if callable(preview):
+                            out = preview(live, src, tgt, **self._glossary_kwargs())
+                        else:
+                            out = self.translator.translate(
+                                live, src, tgt, beam=1, **self._glossary_kwargs()
+                            )
                         if DEBUG:
                             print(f"[dbg] mt live {len(live)} chars in "
                                   f"{time.perf_counter()-t0:.2f}s", flush=True)
-                        self.bridge.committed_changed.emit(out + " …")
+                        if out:
+                            self.bridge.committed_changed.emit(out + " …")
                     except Exception as exc:  # noqa: BLE001
                         print(f"[mt] live error: {exc}")
                 continue
@@ -433,23 +500,8 @@ class Pipeline:
                     # ⚡ Skip term locker, call raw NLLB translate (beam=1 greedy)
                     out = self.translator._nllb_translate(text, src, tgt, beam=commit_beam)
                 else:
-                    glossary = (
-                        self.settings.data.glossary.entries
-                        if self.settings else []
-                    )
-                    auto_caps = (
-                        self.settings.data.glossary.auto_lock_caps
-                        if self.settings else True
-                    )
-                    auto_camel = (
-                        self.settings.data.glossary.auto_lock_camel
-                        if self.settings else True
-                    )
                     out = self.translator.translate(
-                        text, src, tgt, beam=commit_beam,
-                        glossary=glossary,
-                        auto_lock_caps=auto_caps,
-                        auto_lock_camel=auto_camel,
+                        text, src, tgt, beam=commit_beam, **self._glossary_kwargs()
                     )
                 if DEBUG:
                     print(f"[dbg] mt commit {len(text)} chars in "
@@ -471,7 +523,26 @@ class Pipeline:
         mt.start()
         self._threads.append(mt)
         self._mt_ready.wait(timeout=120)
+        if self._stop.is_set():
+            return
 
+        self.bridge.status_changed.emit("Đang tải mô hình nhận dạng giọng nói…")
+        try:
+            self.stt = create_transcriber(
+                self._stt_cfg,
+                on_partial=self._on_partial,
+                on_commit=self._on_commit,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[stt] FAILED to load speech model: {exc}")
+            self.bridge.status_changed.emit("Không tải được mô hình nhận dạng giọng nói")
+            return
+        self.bridge.status_changed.emit(
+            "Chế độ tốc độ cao đã sẵn sàng" if self._speed_mode else "Sẵn sàng — đang nghe âm thanh hệ thống"
+        )
+        clear = threading.Timer(3.0, self.bridge.status_changed.emit, args=("",))
+        clear.daemon = True
+        clear.start()
         self.stt.start()
         cap = threading.Thread(target=self._capture_loop, daemon=True, name="capture")
         cap.start()
@@ -479,32 +550,52 @@ class Pipeline:
 
     def stop(self) -> None:
         self._stop.set()
-        self.stt.stop()
+        if self.stt is not None:
+            self.stt.stop()
         if self.dub is not None:
-            self.dub.stop()
+            self.dub.stop()  # also restores ducked app volumes
+        if self.settings is not None:
+            self.settings.flush()
+        if self.session is not None:
+            self.session.save()
 
 
 # ──────────────────────────────────── Tray Menu (Design 4a) ─────────
+
+def _toggle_window(win) -> None:
+    """Show + raise the control window, or hide it if it is already in front."""
+    if win.isVisible() and not win.isMinimized() and win.isActiveWindow():
+        win.hide()
+        return
+    if win.isMinimized():
+        win.showNormal()
+    win.show()
+    win.raise_()
+    win.activateWindow()
+
 
 def _make_tray(app, overlay, main_win, pipeline, settings: AppSettings):
     from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
     from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
-    pixmap = QPixmap(64, 64)
-    pixmap.fill(QColor(0, 0, 0, 0))
-    painter = QPainter(pixmap)
-    painter.setBrush(QColor("#3b82f6"))
-    painter.setPen(QColor("#ffffff"))
-    painter.drawRoundedRect(4, 16, 56, 32, 8, 8)
-    painter.drawText(pixmap.rect(), 0x84, "VI")  # AlignCenter
-    painter.end()
+    icon = app.windowIcon()
+    if icon.isNull():
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(QColor(0, 0, 0, 0))
+        painter = QPainter(pixmap)
+        painter.setBrush(QColor("#10B981"))
+        painter.setPen(QColor("#ffffff"))
+        painter.drawRoundedRect(4, 16, 56, 32, 8, 8)
+        painter.drawText(pixmap.rect(), 0x84, "VI")  # AlignCenter
+        painter.end()
+        icon = QIcon(pixmap)
 
-    tray = QSystemTrayIcon(QIcon(pixmap))
+    tray = QSystemTrayIcon(icon)
     menu = QMenu()
 
     # Exactly 2 menu items as requested
     ctrl_act = menu.addAction("Cửa sổ điều khiển")
-    ctrl_act.triggered.connect(lambda: main_win.hide() if main_win.isVisible() else (main_win.show(), main_win.activateWindow()))
+    ctrl_act.triggered.connect(lambda: _toggle_window(main_win))
 
     quit_action = menu.addAction("Thoát")
     def do_quit() -> None:
@@ -514,13 +605,20 @@ def _make_tray(app, overlay, main_win, pipeline, settings: AppSettings):
 
     quit_action.triggered.connect(do_quit)
     tray.setContextMenu(menu)
-    tray.setToolTip("Real-Time Translator")
+    tray.setToolTip("Real-Time Translator — Ctrl+Alt+E: mở/ẩn · Ctrl+Alt+P: tạm dừng")
+
+    # Left-click / double-click on the tray icon opens the window (it did nothing).
+    def on_activated(reason) -> None:
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
+            _toggle_window(main_win)
+
+    tray.activated.connect(on_activated)
 
     def update_tray() -> None:
         t_colors = get_theme(settings.data.ui.theme)
         apply_theme(menu, t_colors, settings.data.ui.use_custom_fonts)
 
-    settings.changed.connect(update_tray)
+    settings.appearance_changed.connect(update_tray)
     update_tray()
 
     tray.show()
@@ -562,7 +660,17 @@ def _takeover_single_instance() -> None:
             old_pid = int(pid_file.read_text("utf-8").strip())
             if old_pid not in family and psutil.pid_exists(old_pid):
                 proc = psutil.Process(old_pid)
-                if proc.is_running() and proc.name().lower() in ("python.exe", "pythonw.exe"):
+                # PIDs get reused: only kill it if it really is an rtt.app
+                # process, never some unrelated Python program.
+                try:
+                    cmdline = " ".join(proc.cmdline()).lower()
+                except Exception:
+                    cmdline = ""
+                if (
+                    proc.is_running()
+                    and proc.name().lower() in ("python.exe", "pythonw.exe")
+                    and "rtt.app" in cmdline
+                ):
                     print(f"[app] taking over from old instance pid={old_pid}")
                     proc.kill()
                     time.sleep(1.5)
@@ -625,6 +733,7 @@ def main() -> None:
             partial_changed = _Sig("PARTIAL")
             committed_changed = _Sig("COMMIT ")
             status_changed = _Sig("STATUS ")
+            paused_changed = _Sig("PAUSED ")
 
         pipeline = Pipeline(args, _Bridge(), settings=settings, session=session)
         pipeline.start()
@@ -682,9 +791,16 @@ def main() -> None:
     main_window = MainWindow(settings=settings, session=session_mgr, bridge=bridge)
     main_window.show()
 
-    # Keyboard shortcut Ctrl+Alt+E to toggle MainWindow
-    shortcut_main = QShortcut(QKeySequence("Ctrl+Alt+E"), overlay)
-    shortcut_main.activated.connect(lambda: main_window.hide() if main_window.isVisible() else main_window.show())
+    # System-wide hotkeys (work even while a video player has focus).
+    from rtt.hotkeys import MOD_ALT, MOD_CONTROL, GlobalHotkeys
+
+    hotkeys = GlobalHotkeys()
+    hotkeys.register(MOD_CONTROL | MOD_ALT, "E", lambda: _toggle_window(main_window))
+    hotkeys.register(MOD_CONTROL | MOD_ALT, "P", session_mgr.toggle_pause)
+    hotkeys.register(MOD_CONTROL | MOD_ALT, "S", overlay.toggle_move_mode)
+    # Fallback when RegisterHotKey is unavailable: works while our window has focus.
+    shortcut_main = QShortcut(QKeySequence("Ctrl+Alt+E"), main_window)
+    shortcut_main.activated.connect(lambda: _toggle_window(main_window))
 
     # Pipeline
     pipeline = Pipeline(args, bridge, settings=settings, session=session_mgr)
@@ -692,6 +808,14 @@ def main() -> None:
     threading.Thread(target=pipeline.start, daemon=True, name="boot").start()
 
     tray = _make_tray(app, overlay, main_window, pipeline, settings)  # noqa: F841
+
+    def on_quit() -> None:
+        hotkeys.unregister_all()
+        settings.flush()
+        if session_mgr.active_session is not None:
+            session_mgr.active_session.save()
+
+    app.aboutToQuit.connect(on_quit)
     sys.exit(app.exec())
 
 

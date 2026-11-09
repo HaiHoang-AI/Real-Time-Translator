@@ -8,9 +8,11 @@ components react in real time.
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import sys
+import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
@@ -44,6 +46,9 @@ class DisplaySettings:
     show_original: bool = True      # show source text above translation
     alignment: str = "center"       # left | center | right
     overlay_width: int = 680        # px, subtitle overlay card length (400 - 1000)
+    # Where the user dragged the overlay to (window top-left, global px).
+    # Empty list = use `position` preset. Survives restarts & setting changes.
+    custom_pos: list = field(default_factory=list)
 
 
 @dataclass
@@ -62,6 +67,9 @@ class DubSettings:
     voice: str = "vi_VN-vais1000-medium"
     ducking: float = 0.18           # 0–1, how much to lower other apps
     max_speed: float = 1.45         # TTS speed ceiling
+    # Mute the loopback capture while our own dub voice is audible, so the
+    # STT never transcribes (and re-translates) the dub itself.
+    block_self_echo: bool = True
 
 
 @dataclass
@@ -123,12 +131,18 @@ class AppSettings(QObject):
                     — this saves to disk and emits ``changed``.
     """
 
-    changed = Signal()              # emitted after any update + save
+    changed = Signal()              # emitted after any real value change
+    appearance_changed = Signal()   # theme / font family changed (full restyle)
+
+    _SAVE_DELAY_S = 0.4             # coalesce slider drags / typing into one write
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.data = SettingsData()
+        self._save_lock = threading.Lock()
+        self._save_timer: Optional[threading.Timer] = None
         self._load()
+        atexit.register(self.flush)
 
     # ─────────────────────────────────── persistence ───────────────
 
@@ -142,13 +156,35 @@ class AppSettings(QObject):
             print(f"[settings] failed to load {_SETTINGS_FILE}: {exc}")
 
     def save(self) -> None:
-        try:
-            _SETTINGS_FILE.write_text(
-                json.dumps(asdict(self.data), indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-        except Exception as exc:
-            print(f"[settings] failed to save: {exc}")
+        """Write settings to disk now (atomic: temp file + replace)."""
+        with self._save_lock:
+            if self._save_timer is not None:
+                self._save_timer.cancel()
+                self._save_timer = None
+            try:
+                tmp = _SETTINGS_FILE.with_name(_SETTINGS_FILE.name + ".tmp")
+                tmp.write_text(
+                    json.dumps(asdict(self.data), indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                os.replace(tmp, _SETTINGS_FILE)
+            except Exception as exc:
+                print(f"[settings] failed to save: {exc}")
+
+    def _schedule_save(self) -> None:
+        with self._save_lock:
+            if self._save_timer is not None:
+                self._save_timer.cancel()
+            self._save_timer = threading.Timer(self._SAVE_DELAY_S, self.save)
+            self._save_timer.daemon = True
+            self._save_timer.start()
+
+    def flush(self) -> None:
+        """Persist any pending (debounced) change immediately."""
+        with self._save_lock:
+            pending = self._save_timer is not None
+        if pending:
+            self.save()
 
     # ─────────────────────────────────── update API ────────────────
 
@@ -160,31 +196,43 @@ class AppSettings(QObject):
             settings.update(display={"font_size": 30, "position": "top"})
             settings.update(ui={"theme": "light"})
         """
+        any_change = False
+        appearance = False
         for section_name, patch in section_patches.items():
             section = getattr(self.data, section_name, None)
             if section is None:
                 continue
             for key, value in patch.items():
-                if hasattr(section, key):
-                    setattr(section, key, value)
-        self.save()
+                if not hasattr(section, key) or getattr(section, key) == value:
+                    continue
+                setattr(section, key, value)
+                any_change = True
+                if section_name == "ui" and key in ("theme", "use_custom_fonts"):
+                    appearance = True
+        # Re-applying an unchanged value (e.g. widgets loading their initial
+        # state) must not trigger saves or app-wide restyles.
+        if not any_change:
+            return
+        self._schedule_save()
         self.changed.emit()
+        if appearance:
+            self.appearance_changed.emit()
 
     def set_glossary_entries(self, entries: list[dict]) -> None:
         """Replace the entire glossary list."""
         self.data.glossary.entries = entries
-        self.save()
+        self._schedule_save()
         self.changed.emit()
 
     def add_glossary_entry(self, source: str, target: str) -> None:
         self.data.glossary.entries.append({"source": source, "target": target})
-        self.save()
+        self._schedule_save()
         self.changed.emit()
 
     def remove_glossary_entry(self, index: int) -> None:
         if 0 <= index < len(self.data.glossary.entries):
             self.data.glossary.entries.pop(index)
-            self.save()
+            self._schedule_save()
             self.changed.emit()
 
     # ─────────────────────────────────── helpers ───────────────────
@@ -204,6 +252,7 @@ class AppSettings(QObject):
         self.data = SettingsData()
         self.save()
         self.changed.emit()
+        self.appearance_changed.emit()
 
 
 # ──────────────────────────────────── standalone test ──────────────

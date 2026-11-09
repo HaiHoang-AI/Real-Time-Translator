@@ -19,6 +19,7 @@ from typing import List, Optional, Set
 from PySide6.QtCore import (
     Property,
     QEasingCurve,
+    QPointF,
     QPropertyAnimation,
     QRect,
     QRectF,
@@ -31,6 +32,7 @@ from PySide6.QtGui import (
     QAction,
     QColor,
     QFont,
+    QFontMetrics,
     QMouseEvent,
     QPainter,
     QPainterPath,
@@ -82,73 +84,123 @@ def font_mono(pt_size: int = 10, weight: QFont.Weight = QFont.Weight.Normal) -> 
 # ───────────────────────────────────── Item Widget ───────────────────
 
 class TranscriptEntryWidget(HoverLiftFrame):
-    """Single speech card row in the transcript list with claymorphic styling."""
+    """Single speech card row in the transcript list."""
 
     def __init__(self, entry: TranscriptEntry, theme: ThemeColors = DARK, is_latest: bool = False, parent=None):
         super().__init__(parent)
         self.entry = entry
         self.theme = theme
         self.is_latest = is_latest
-        self.setup_ui()
+        self.src_lbl: Optional[QLabel] = None
+        self.tgt_lbl: Optional[QLabel] = None
+        self._build()
+        self._restyle()
 
-    def setup_ui(self):
-        is_dark = (getattr(self.theme, 'name', '') == 'dark')
+    def _build(self) -> None:
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(14, 11, 16, 11)
+        layout.setSpacing(12)
+
+        # Time badge pill
+        st = getattr(self.entry, 'start_time_s', 0.0)
+        time_str = getattr(self.entry, 'time_str', '') or f"{(int(st)//60):02d}:{(int(st)%60):02d}"
+        self.time_lbl = QLabel(time_str)
+        self.time_lbl.setObjectName("TimePill")
+        # The global QSS font-size overrides setFont(), so the pill font is set
+        # in its stylesheet (see _restyle) and measured with the same font.
+        pill_font = QFont(_font_mono_str())
+        pill_font.setPixelSize(11)
+        pill_font.setWeight(QFont.Weight.Medium)
+        self.time_lbl.setFont(pill_font)
+        # Same width for every card so the text column lines up.
+        sample = "88:88:88" if len(time_str) > 5 else "88:88"
+        self.time_lbl.setFixedWidth(QFontMetrics(pill_font).horizontalAdvance(sample) + 18)
+        self.time_lbl.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.time_lbl, 0, Qt.AlignTop)
+
+        content_layout = QVBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(3)
+
+        if self.entry.source_text:
+            self.src_lbl = QLabel(self.entry.source_text)
+            self.src_lbl.setObjectName("SrcText")
+            self.src_lbl.setFont(font_ui(9, QFont.Weight.Medium))
+            self.src_lbl.setWordWrap(True)
+            self.src_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            content_layout.addWidget(self.src_lbl)
+
+        if self.entry.target_text:
+            self.tgt_lbl = QLabel(self.entry.target_text)
+            self.tgt_lbl.setObjectName("TgtText")
+            self.tgt_lbl.setWordWrap(True)
+            self.tgt_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            content_layout.addWidget(self.tgt_lbl)
+
+        layout.addLayout(content_layout, 1)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_menu)
+
+    def set_latest(self, latest: bool) -> None:
+        """Restyle in place (the old code re-ran setup_ui() on a widget that
+        already had a layout, leaking orphan widgets on every new sentence)."""
+        if latest != self.is_latest:
+            self.is_latest = latest
+            self._restyle()
+
+    def _restyle(self) -> None:
+        t = self.theme
+        is_dark = t.name == "dark"
         bg_col = "#1E222D" if is_dark else "#FFFFFF"
-        border_col = self.theme.accent if self.is_latest else ("rgba(255,255,255,0.06)" if is_dark else "rgba(0,0,0,0.06)")
-
+        idle_border = "rgba(255,255,255,0.06)" if is_dark else "rgba(0,0,0,0.07)"
+        hover_border = "rgba(255,255,255,0.16)" if is_dark else "rgba(0,0,0,0.16)"
+        border_col = t.accent if self.is_latest else idle_border
+        time_bg = t.pill_bg if self.is_latest else t.raised
+        time_color = t.accent if self.is_latest else t.dim
         self.setStyleSheet(f"""
             TranscriptEntryWidget {{
                 background-color: {bg_col};
                 border: 1px solid {border_col};
                 border-radius: 12px;
             }}
+            TranscriptEntryWidget:hover {{
+                border-color: {t.accent if self.is_latest else hover_border};
+            }}
+            QLabel#TimePill {{
+                background-color: {time_bg};
+                color: {time_color};
+                border: 1px solid {t.border};
+                border-radius: 8px;
+                padding: 2px 0px;
+                font-family: '{_font_mono_str()}', 'Consolas', monospace;
+                font-size: 11px;
+                font-weight: 500;
+            }}
+            QLabel#SrcText {{ color: {t.teal}; background: transparent; }}
+            QLabel#TgtText {{ color: {t.text}; background: transparent; }}
         """)
+        if self.tgt_lbl is not None:
+            weight = QFont.Weight.Bold if self.is_latest else QFont.Weight.DemiBold
+            self.tgt_lbl.setFont(font_ui(10.5, weight))
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(12)
-
-        # Time badge pill
-        st = getattr(self.entry, 'start_time_s', 0.0)
-        time_str = getattr(self.entry, 'time_str', '') or f"{(int(st)//60):02d}:{(int(st)%60):02d}"
-        time_lbl = QLabel(time_str)
-        time_lbl.setFont(font_mono(8.5, QFont.Weight.Medium))
-        time_lbl.setFixedWidth(46)
-        time_lbl.setAlignment(Qt.AlignCenter)
-        time_bg = self.theme.pill_bg if self.is_latest else (self.theme.raised)
-        time_color = self.theme.accent if self.is_latest else self.theme.dim
-        time_lbl.setStyleSheet(f"""
-            background-color: {time_bg};
-            color: {time_color};
-            border: 1px solid {self.theme.border};
-            border-radius: 8px;
-            padding: 2px 0px;
-        """)
-        layout.addWidget(time_lbl, 0, Qt.AlignTop)
-
-        # Content column (Source text + Target text)
-        content_box = QWidget()
-        content_box.setStyleSheet("background: transparent; border: none;")
-        content_layout = QVBoxLayout(content_box)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(4)
-
-        if self.entry.source_text:
-            src_lbl = QLabel(self.entry.source_text)
-            src_lbl.setFont(font_ui(9, QFont.Weight.Medium))
-            src_lbl.setStyleSheet(f"color: {self.theme.teal}; background: transparent; border: none;")
-            src_lbl.setWordWrap(True)
-            content_layout.addWidget(src_lbl)
-
+    def _show_menu(self, pos) -> None:
+        menu = QMenu(self)
         if self.entry.target_text:
-            tgt_lbl = QLabel(self.entry.target_text)
-            tgt_weight = QFont.Weight.Bold if self.is_latest else QFont.Weight.DemiBold
-            tgt_lbl.setFont(font_ui(10.5, tgt_weight))
-            tgt_lbl.setStyleSheet(f"color: {self.theme.text}; background: transparent; border: none;")
-            tgt_lbl.setWordWrap(True)
-            content_layout.addWidget(tgt_lbl)
-
-        layout.addWidget(content_box, 1)
+            menu.addAction("Sao chép bản dịch").triggered.connect(
+                lambda: QApplication.clipboard().setText(self.entry.target_text)
+            )
+        if self.entry.source_text:
+            menu.addAction("Sao chép câu gốc").triggered.connect(
+                lambda: QApplication.clipboard().setText(self.entry.source_text)
+            )
+        if self.entry.source_text and self.entry.target_text:
+            menu.addAction("Sao chép cả hai").triggered.connect(
+                lambda: QApplication.clipboard().setText(
+                    f"{self.entry.source_text}\n{self.entry.target_text}"
+                )
+            )
+        if not menu.isEmpty():
+            menu.exec(self.mapToGlobal(pos))
 
 
 class FormatButton(ElasticButton):
@@ -158,59 +210,79 @@ class FormatButton(ElasticButton):
         self.setFont(font_ui(9, QFont.Weight.Medium))
         self.setCursor(Qt.PointingHandCursor)
         self.setCheckable(True)
-        self.setFixedHeight(26)
-        self.setStyleSheet(self._get_style(False))
-        self.toggled.connect(lambda c: self.setStyleSheet(self._get_style(c)))
-
-    def _get_style(self, checked):
-        if checked:
-            return f"""
-                QPushButton {{
-                    background-color: {self.theme.accent};
-                    color: {self.theme.accent_text};
-                    border: none;
-                    border-radius: 5px;
-                    padding: 0 10px;
-                }}
-            """
-        else:
-            return f"""
-                QPushButton {{
-                    background-color: {self.theme.raised};
-                    color: {self.theme.dim};
-                    border: 1px solid {self.theme.border};
-                    border-radius: 5px;
-                    padding: 0 10px;
-                }}
-                QPushButton:hover {{
-                    color: {self.theme.text};
-                }}
-            """
-
-
-class ToggleCheckBox(QCheckBox):
-    def __init__(self, text, theme):
-        super().__init__(text)
-        self.theme = theme
-        self.setFont(font_ui(8.5))
+        self.setFixedHeight(28)
         self.setStyleSheet(f"""
-            QCheckBox {{
-                color: {self.theme.text};
-                font-size: 11px;
-                spacing: 6px;
-            }}
-            QCheckBox::indicator {{
-                width: 26px;
-                height: 15px;
+            QPushButton {{
+                background-color: {theme.raised};
+                color: {theme.dim};
+                border: 1px solid {theme.border};
                 border-radius: 7px;
+                padding: 0 10px;
             }}
-            QCheckBox::indicator:unchecked {{
-                background-color: {self.theme.border_strong};
-            }}
-            QCheckBox::indicator:checked {{
-                background-color: {self.theme.accent};
+            QPushButton:hover {{ color: {theme.text}; }}
+            QPushButton:checked {{
+                background-color: {theme.accent};
+                color: {theme.accent_text};
+                border: 1px solid {theme.accent};
             }}
         """)
+
+
+class ToggleCheckBox(QWidget):
+    """Small labelled switch (the old QCheckBox indicator was a knob-less pill)."""
+
+    toggled = Signal(bool)
+
+    def __init__(self, text, theme):
+        super().__init__()
+        from rtt.settings_ui import ToggleSwitch
+
+        self.theme = theme
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(7)
+        self.switch = ToggleSwitch(theme)
+        self.switch.setFixedSize(34, 19)
+        self.switch.toggled.connect(self.toggled.emit)
+        lbl = QLabel(text)
+        lbl.setFont(font_ui(8.5))
+        lbl.setStyleSheet(f"color: {theme.text}; background: transparent;")
+        lay.addWidget(self.switch)
+        lay.addWidget(lbl)
+        lay.addStretch(1)
+
+    def isChecked(self) -> bool:
+        return self.switch.isChecked()
+
+    def setChecked(self, checked: bool) -> None:
+        self.switch.setChecked(checked)
+
+
+class ElidedLabel(QLabel):
+    """Single-line label that ends with '…' instead of being cut mid-glyph."""
+
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(parent)
+        self._full = text
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.setToolTip(text)
+        super().setText(text)
+
+    def setText(self, text: str) -> None:  # noqa: N802 - Qt API
+        self._full = text
+        self.setToolTip(text)
+        self._elide()
+
+    def full_text(self) -> str:
+        return self._full
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._elide()
+
+    def _elide(self) -> None:
+        avail = max(10, self.contentsRect().width())
+        super().setText(self.fontMetrics().elidedText(self._full, Qt.ElideRight, avail))
 
 
 # ────────────────────────────── Modern Sidebar Components ────────────
@@ -230,21 +302,31 @@ class SidebarIconButton(QPushButton):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         is_dark = (getattr(self.theme, 'name', '') == 'dark')
+        hovered = self.underMouse()
 
         # Hover background
-        if self.underMouse():
-            bg_color = QColor("#302A24") if is_dark else QColor("#ECE6DB")
+        if hovered:
+            bg_color = QColor(255, 255, 255, 20) if is_dark else QColor(0, 0, 0, 16)
             painter.setBrush(bg_color)
             painter.setPen(Qt.NoPen)
-            painter.drawRoundedRect(self.rect(), 5, 5)
+            painter.drawRoundedRect(QRectF(self.rect()), 6, 6)
 
-        # Draw icon text
-        text_color = QColor(self.theme.accent) if self.underMouse() else (QColor("#F0EBE3") if is_dark else QColor("#201C17"))
-        painter.setPen(text_color)
-        font = QFont("Segoe UI Symbol", 12, QFont.Weight.Bold)
-        font.setFamilies(["Segoe UI Symbol", "Segoe UI Emoji", "Segoe UI", "Arial"])
-        painter.setFont(font)
-        painter.drawText(self.rect(), Qt.AlignCenter, self.icon_text)
+        # Vector icons: the ≡ / ⌕ glyphs depended on Segoe UI Symbol and
+        # rendered as nothing when that font was missing.
+        color = QColor(self.theme.accent) if hovered else QColor(self.theme.text if is_dark else "#334155")
+        pen = QPen(color, 1.6)
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        cx, cy = self.width() / 2.0, self.height() / 2.0
+        if self.icon_text == "≡":  # menu / sidebar toggle
+            for dy in (-4.5, 0.0, 4.5):
+                painter.drawLine(QPointF(cx - 6, cy + dy), QPointF(cx + 6, cy + dy))
+        elif self.icon_text == "⌕":  # search
+            painter.drawEllipse(QPointF(cx - 1.5, cy - 1.5), 4.6, 4.6)
+            painter.drawLine(QPointF(cx + 2.0, cy + 2.0), QPointF(cx + 6.0, cy + 6.0))
+        else:
+            painter.drawText(self.rect(), Qt.AlignCenter, self.icon_text)
         painter.end()
 
 
@@ -283,12 +365,10 @@ class SidebarActionItemWidget(QPushButton):
         if self.is_selected:
             bg = "#2B2F3D" if is_dark else "#E2DDD3"
             text_color = self.theme.accent
-            border_color = "transparent"
             font_w = "bold"
         else:
             bg = "transparent"
             text_color = self.theme.text if is_dark else "#2D3748"
-            border_color = "transparent"
             font_w = "600"
 
         hover_bg = "#242835" if is_dark else "#EFEAE1"
@@ -317,9 +397,12 @@ class SidebarSectionHeaderWidget(QWidget):
     def __init__(self, title: str, action_icon: str = "", theme: ThemeColors = DARK, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WA_StyledBackground, True)
+        # Otherwise the global "QWidget { background: surface }" painted a
+        # lighter strip behind each section title in the darker sidebar.
+        self.setStyleSheet("SidebarSectionHeaderWidget { background: transparent; }")
         self.theme = theme
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 8, 4, 4)
+        layout.setContentsMargins(6, 10, 4, 4)
         layout.setSpacing(4)
 
         lbl = QLabel(title)
@@ -437,6 +520,75 @@ class SidebarFooterWidget(QWidget):
 
 # ────────────────────────────── Claude Minimal Session Item ────────────
 
+class CloseIconButton(QPushButton):
+    """Small round button with a vector × (the '✕' glyph rendered empty)."""
+
+    def __init__(self, theme: ThemeColors, parent=None):
+        super().__init__(parent)
+        self.theme = theme
+        self.setFixedSize(26, 26)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("QPushButton { background: transparent; border: none; }")
+
+    def paintEvent(self, _event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        hovered = self.underMouse()
+        if hovered:
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(self.theme.raised))
+            p.drawEllipse(QRectF(1, 1, 24, 24))
+        pen = QPen(QColor(self.theme.text if hovered else self.theme.dim), 1.5)
+        pen.setCapStyle(Qt.RoundCap)
+        p.setPen(pen)
+        p.drawLine(9, 9, 17, 17)
+        p.drawLine(17, 9, 9, 17)
+        p.end()
+
+
+class SelectCircle(QPushButton):
+    """Vector selection circle: outline when idle, filled check when selected."""
+
+    def __init__(self, theme: ThemeColors, parent=None):
+        super().__init__(parent)
+        self.theme = theme
+        self._checked = False
+        self.setFixedSize(18, 18)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setStyleSheet("QPushButton { background: transparent; border: none; }")
+
+    def set_checked(self, checked: bool) -> None:
+        self._checked = checked
+        self.update()
+
+    def paintEvent(self, _event) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        r = QRectF(3.5, 3.5, 11, 11)
+        if self._checked:
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(self.theme.accent))
+            p.drawEllipse(r)
+            pen = QPen(QColor(self.theme.accent_text), 1.6)
+            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.RoundJoin)
+            p.setPen(pen)
+            path = QPainterPath()
+            path.moveTo(6.4, 9.2)
+            path.lineTo(8.3, 11.0)
+            path.lineTo(11.8, 7.3)
+            p.setBrush(Qt.NoBrush)
+            p.drawPath(path)
+        else:
+            col = QColor(self.theme.accent if self.underMouse() else self.theme.dim)
+            p.setPen(QPen(col, 1.3))
+            p.setBrush(Qt.NoBrush)
+            p.drawEllipse(r)
+        p.end()
+
+
 class ClaudeSessionItemWidget(QWidget):
     """Minimal Claude-style session row with circle bullet, hover lift, and inline edit."""
 
@@ -469,30 +621,23 @@ class ClaudeSessionItemWidget(QWidget):
         layout.setContentsMargins(6, 2, 6, 2)
         layout.setSpacing(6)
 
-        # Bullet / Selection toggle button (○ in Claude style)
-        self.bullet_btn = QPushButton("o")
-        self.bullet_btn.setFixedSize(16, 16)
-        self.bullet_btn.setCursor(Qt.PointingHandCursor)
-        self.bullet_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent;
-                color: {self.theme.dim};
-                border: none;
-                font-size: 11px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                color: {self.theme.accent};
-            }}
-        """)
+        # Selection circle (click / Ctrl+click to pick sessions for AI summary)
+        self.bullet_btn = SelectCircle(self.theme)
+        self.bullet_btn.setToolTip("Chọn phiên để tóm tắt / xoá nhiều phiên")
         self.bullet_btn.clicked.connect(self._toggle_check)
         layout.addWidget(self.bullet_btn)
 
         # Session Title
         title_text = self.info.get("title", f"Phiên {self.session_id}")
-        self.title_lbl = QLabel(title_text)
-        self.title_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.title_lbl = ElidedLabel(title_text)
         self.title_lbl.setWordWrap(False)
+        sentences = self.info.get("sentences", 0)
+        start_dt = self.info.get("start_dt")
+        when = start_dt.strftime("%d/%m/%Y %H:%M") if start_dt else ""
+        self.setToolTip(
+            f"{title_text}\n{when} · {sentences} câu · {self.info.get('duration_str', '')}\n"
+            "Nhấp đúp để đổi tên · Chuột phải để ghim / xoá"
+        )
         weight = QFont.Weight.DemiBold if self.is_active else QFont.Weight.Normal
         self.title_lbl.setFont(font_ui(9, weight))
         title_color = self.theme.text if self.is_active else self.theme.dim
@@ -512,7 +657,9 @@ class ClaudeSessionItemWidget(QWidget):
             }}
         """)
         self.rename_edit.hide()
-        self.rename_edit.returnPressed.connect(self._finish_rename)
+        # Return *or* clicking elsewhere commits (returnPressed alone left the
+        # editor stuck open when focus moved away).
+        self.rename_edit.editingFinished.connect(self._finish_rename)
         layout.addWidget(self.rename_edit, 1)
 
         self._update_style()
@@ -546,12 +693,7 @@ class ClaudeSessionItemWidget(QWidget):
 
     def set_checked(self, checked: bool) -> None:
         self.is_checked = checked
-        if checked:
-            self.bullet_btn.setText("●")
-            self.bullet_btn.setStyleSheet(f"color: {self.theme.accent}; background: transparent; border: none; font-size: 11px;")
-        else:
-            self.bullet_btn.setText("o")
-            self.bullet_btn.setStyleSheet(f"color: {self.theme.dim}; background: transparent; border: none; font-size: 11px;")
+        self.bullet_btn.set_checked(checked)
 
     def _toggle_check(self) -> None:
         self.set_checked(not self.is_checked)
@@ -579,7 +721,13 @@ class ClaudeSessionItemWidget(QWidget):
         self.rename_edit.setFocus()
         self.rename_edit.selectAll()
 
+    def _cancel_rename(self) -> None:
+        self.rename_edit.hide()
+        self.title_lbl.show()
+
     def _finish_rename(self) -> None:
+        if self.rename_edit.isHidden():
+            return
         new_text = self.rename_edit.text().strip()
         if new_text and new_text != self.info.get("title"):
             self.info["title"] = new_text
@@ -966,6 +1114,8 @@ class SidebarResizeHandle(QWidget):
 class TranscriptPanel(QWidget):
     """Full-featured conversation history with Claude-styled left sidebar & AI summarizer."""
 
+    open_settings_requested = Signal()
+
     def __init__(
         self,
         session_mgr_or_session=None,
@@ -997,10 +1147,8 @@ class TranscriptPanel(QWidget):
 
         self.setup_ui()
 
-        if self.settings:
-            self.settings.changed.connect(self.update_meta)
-            self.settings.changed.connect(self._on_settings_changed)
-
+        # Theme changes are handled by MainWindow rebuilding the page; a full
+        # restyle on every settings change (slider ticks…) was wasted work.
         self.session_mgr.session_switched.connect(self.set_session)
         self.session_mgr.session_list_changed.connect(self.reload_sessions_list)
         self.session_mgr.paused_changed.connect(self._update_pause_ui)
@@ -1008,13 +1156,63 @@ class TranscriptPanel(QWidget):
         if self.session:
             self.set_session(self.session)
 
-    def _on_settings_changed(self) -> None:
-        if self.settings:
-            self.theme = get_theme(self.settings.data.ui.theme)
-            self.apply_theme_style()
-
     def apply_theme_style(self) -> None:
         apply_theme(self, self.theme)
+
+    def _build_empty_state(self) -> QWidget:
+        t = self.theme
+        box = QWidget()
+        box.setObjectName("EmptyState")
+        box.setStyleSheet(f"QWidget#EmptyState {{ background: {t.surface}; }}")
+        lay = QVBoxLayout(box)
+        lay.setContentsMargins(40, 40, 40, 60)
+        lay.setSpacing(10)
+        lay.addStretch(1)
+
+        title = QLabel("Chưa có câu nào trong phiên này")
+        title.setAlignment(Qt.AlignCenter)
+        title.setFont(font_ui(12, QFont.Weight.Bold))
+        title.setStyleSheet(f"color: {t.text};")
+        lay.addWidget(title)
+
+        hint = QLabel(
+            "Phát video, cuộc họp hoặc podcast trên máy tính — phụ đề dịch sẽ hiện "
+            "trên màn hình và được lưu lại tại đây.\n"
+            "Ctrl+Alt+P: tạm dừng / tiếp tục  ·  Ctrl+Alt+E: ẩn / hiện cửa sổ"
+        )
+        hint.setAlignment(Qt.AlignCenter)
+        hint.setWordWrap(True)
+        hint.setFont(font_ui(9.5))
+        hint.setStyleSheet(f"color: {t.dim};")
+        lay.addWidget(hint)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch(1)
+        open_settings = ElasticButton("Chọn ngôn ngữ và mô hình")
+        open_settings.setFont(font_ui(9, QFont.Weight.DemiBold))
+        open_settings.setFixedHeight(34)
+        open_settings.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {t.raised};
+                color: {t.text};
+                border: 1px solid {t.border};
+                border-radius: 9px;
+                padding: 0 16px;
+            }}
+            QPushButton:hover {{ border-color: {t.accent}; color: {t.accent}; }}
+        """)
+        open_settings.clicked.connect(self.open_settings_requested.emit)
+        btn_row.addWidget(open_settings)
+        btn_row.addStretch(1)
+        lay.addSpacing(6)
+        lay.addLayout(btn_row)
+        lay.addStretch(2)
+        return box
+
+    def _update_empty_state(self) -> None:
+        empty = not (self.session and self.session.entries)
+        self.empty_state.setVisible(empty)
+        self.scroll_area.setVisible(not empty)
 
     def setup_ui(self) -> None:
         main_layout = QVBoxLayout(self)
@@ -1023,13 +1221,8 @@ class TranscriptPanel(QWidget):
 
         self.container = QFrame(self)
         self.container.setObjectName("MainContainer")
-        self.container.setStyleSheet(f"""
-            QFrame#MainContainer {{
-                background-color: {self.theme.surface};
-                border-radius: 14px;
-                border: 1px solid {self.theme.border};
-            }}
-        """)
+        # Embedded in MainWindow's card: no second border/radius inside it.
+        self.container.setStyleSheet("QFrame#MainContainer { background: transparent; border: none; }")
         container_layout = QVBoxLayout(self.container)
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(0)
@@ -1043,12 +1236,21 @@ class TranscriptPanel(QWidget):
 
         # ── LEFT Sidebar (Collapsible, resizable width: default 240px) ─────
         self.sidebar = QFrame()
+        self.sidebar.setObjectName("LeftSidebar")
         self.sidebar.setFixedWidth(self._saved_sidebar_width)
         self.sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        # Scoped by objectName: a bare "QFrame { … }" also matched every QLabel
+        # (QLabel is a QFrame) and gave each one a border + background.
         self.sidebar.setStyleSheet(f"""
-            QFrame {{
+            QFrame#LeftSidebar {{
+                border: none;
                 border-right: 1px solid {self.theme.border};
                 background-color: {self.theme.bg};
+                border-bottom-left-radius: 16px;
+            }}
+            QFrame#LeftSidebar QLabel {{ background: transparent; }}
+            QFrame#LeftSidebar QScrollArea, QFrame#LeftSidebar QScrollArea > QWidget > QWidget {{
+                background: transparent;
             }}
         """)
         self._sidebar_expanded = True
@@ -1081,12 +1283,10 @@ class TranscriptPanel(QWidget):
         self.action_new_btn.clicked.connect(self._create_new_session)
         sidebar_layout.addWidget(self.action_new_btn)
 
-        self.action_artifacts_btn = SidebarActionItemWidget("", "Tóm tắt phiên", self.theme)
+        self.action_artifacts_btn = SidebarActionItemWidget("", "Tóm tắt và xuất file", self.theme)
+        self.action_artifacts_btn.setToolTip("Mở bảng Tóm tắt AI và Xuất transcript (.srt / .txt / .md)")
         self.action_artifacts_btn.clicked.connect(self._open_right_sidebar_and_export)
         sidebar_layout.addWidget(self.action_artifacts_btn)
-
-        self.action_customize_btn = SidebarActionItemWidget("", "Tùy chỉnh", self.theme)
-        sidebar_layout.addWidget(self.action_customize_btn)
 
         # Collapsible Cross-session search box
         self.cross_search_input = QLineEdit()
@@ -1129,11 +1329,11 @@ class TranscriptPanel(QWidget):
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
         """)
         self.sessions_container = QWidget()
-        self.sessions_container.setStyleSheet("background: transparent;")
+        self.sessions_container.setObjectName("SessionsContainer")
+        self.sessions_container.setStyleSheet("QWidget#SessionsContainer { background: transparent; }")
         self.sessions_layout = QVBoxLayout(self.sessions_container)
         self.sessions_layout.setContentsMargins(0, 4, 0, 4)
         self.sessions_layout.setSpacing(2)
-        self.sessions_layout.setAlignment(Qt.AlignTop)
         self.sessions_scroll.setWidget(self.sessions_container)
         sidebar_layout.addWidget(self.sessions_scroll, 1)
 
@@ -1152,8 +1352,12 @@ class TranscriptPanel(QWidget):
 
         # ── Header Bar (Playful Clean) ──
         header = QFrame()
+        header.setObjectName("TranscriptHeader")
         header.setFixedHeight(50)
-        header.setStyleSheet(f"border-bottom: 1px solid {self.theme.border}; background: transparent;")
+        header.setStyleSheet(
+            f"QFrame#TranscriptHeader {{ border: none; border-bottom: 1px solid {self.theme.border}; "
+            f"background: transparent; }}"
+        )
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(14, 0, 14, 0)
         header_layout.setSpacing(10)
@@ -1236,12 +1440,24 @@ class TranscriptPanel(QWidget):
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
         """)
         self.entries_container = QWidget()
+        self.entries_container.setObjectName("EntriesContainer")
+        self.entries_container.setStyleSheet(
+            f"QWidget#EntriesContainer {{ background: {self.theme.surface}; }}"
+        )
         self.entries_layout = QVBoxLayout(self.entries_container)
-        self.entries_layout.setContentsMargins(16, 14, 16, 14)
-        self.entries_layout.setSpacing(4)
-        self.entries_layout.setAlignment(Qt.AlignTop)
+        self.entries_layout.setContentsMargins(18, 16, 18, 16)
+        self.entries_layout.setSpacing(8)
+        # A trailing stretch (not setAlignment(AlignTop)) keeps cards top-aligned
+        # *and* lets word-wrapped cards get their real height-for-width. With
+        # AlignTop the layout under-sized them and the cards overlapped.
+        self.entries_layout.addStretch(1)
         self.scroll_area.setWidget(self.entries_container)
         right_layout.addWidget(self.scroll_area, 1)
+
+        # Empty state (shown when the session has no sentences yet)
+        self.empty_state = self._build_empty_state()
+        right_layout.addWidget(self.empty_state, 1)
+        self.empty_state.hide()
 
         # Floating "↓ Câu mới" Pill
         self.new_items_btn = ElasticButton("↓ Câu mới", self.right_wrapper)
@@ -1263,9 +1479,18 @@ class TranscriptPanel(QWidget):
 
         # ── RIGHT Sidebar (Tóm tắt AI & Xuất Transcript) ────────────
         self.right_sidebar = QFrame()
+        self.right_sidebar.setObjectName("RightSidebar")
         self.right_sidebar.setMinimumWidth(0)
         self.right_sidebar.setMaximumWidth(0)  # Start collapsed
-        self.right_sidebar.setStyleSheet(f"border-left: 1px solid {self.theme.border}; background: {self.theme.bg};")
+        self.right_sidebar.setStyleSheet(f"""
+            QFrame#RightSidebar {{
+                border: none;
+                border-left: 1px solid {self.theme.border};
+                background: {self.theme.bg};
+                border-bottom-right-radius: 16px;
+            }}
+            QFrame#RightSidebar QLabel {{ background: transparent; }}
+        """)
         self._right_sidebar_expanded = False  # Start collapsed
         self._right_sidebar_anim = QPropertyAnimation(self.right_sidebar, b"maximumWidth", self)
         self._right_sidebar_anim.setDuration(220)
@@ -1283,25 +1508,8 @@ class TranscriptPanel(QWidget):
         rs_title.setStyleSheet(f"color: {self.theme.text}; border: none;")
         rs_top.addWidget(rs_title, 1)
 
-        close_rs_btn = QPushButton("✕")
-        close_rs_btn.setFixedSize(26, 26)
-        close_rs_btn.setCursor(Qt.PointingHandCursor)
+        close_rs_btn = CloseIconButton(self.theme)
         close_rs_btn.setToolTip("Đóng thanh công cụ")
-        close_rs_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {self.theme.raised};
-                color: {self.theme.text};
-                border: 1px solid {self.theme.border};
-                border-radius: 13px;
-                font-size: 13px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{
-                background-color: {self.theme.accent};
-                color: {self.theme.accent_text};
-                border-color: {self.theme.accent};
-            }}
-        """)
         close_rs_btn.clicked.connect(self._toggle_right_sidebar)
         rs_top.addWidget(close_rs_btn)
         right_sidebar_layout.addLayout(rs_top)
@@ -1330,15 +1538,14 @@ class TranscriptPanel(QWidget):
         self.summarize_btn.setCursor(Qt.PointingHandCursor)
         self.summarize_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: {self.theme.accent};
-                color: {self.theme.accent_text};
+                background-color: {self.theme.cta_bg};
+                color: {self.theme.cta_text};
                 border: none;
-                border-radius: 7px;
+                border-radius: 8px;
                 padding: 0 10px;
             }}
-            QPushButton:hover {{
-                opacity: 0.9;
-            }}
+            QPushButton:hover {{ background-color: {self.theme.cta_hover}; }}
+            QPushButton:disabled {{ background-color: {self.theme.raised}; color: {self.theme.dim}; }}
         """)
         self.summarize_btn.clicked.connect(self._summarize_selected_sessions)
         right_sidebar_layout.addWidget(self.summarize_btn)
@@ -1433,7 +1640,7 @@ class TranscriptPanel(QWidget):
         self.toggle_src = ToggleCheckBox("Bản gốc", self.theme)
         self.toggle_src.setChecked(True)
         opts_layout.addWidget(self.toggle_src)
-        self.toggle_ts = ToggleCheckBox("Time", self.theme)
+        self.toggle_ts = ToggleCheckBox("Thời gian", self.theme)
         self.toggle_ts.setChecked(True)
         opts_layout.addWidget(self.toggle_ts)
         right_sidebar_layout.addLayout(opts_layout)
@@ -1457,6 +1664,8 @@ class TranscriptPanel(QWidget):
         """)
         self.rs_export_btn.clicked.connect(self.export_transcript)
         right_sidebar_layout.addWidget(self.rs_export_btn)
+        # Pack sections at the top (they were spread over the full height).
+        right_sidebar_layout.addStretch(1)
 
         self.right_sidebar.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         body_layout.addWidget(self.right_sidebar, 0)
@@ -1474,22 +1683,25 @@ class TranscriptPanel(QWidget):
     # ────────────────────────────── Session Management ────────────────
 
     def set_session(self, session: TranscriptSession) -> None:
-        if self.session and self.session != session:
+        # Track what we are actually connected to. The old logic compared
+        # against self.session, which __init__ had already set — so the
+        # session active at startup was never connected and live sentences
+        # did not appear in this panel until the user switched sessions.
+        connected = getattr(self, "_connected_session", None)
+        if connected is not None and connected is not session:
             try:
-                self.session.entry_added.disconnect(self.on_entry_added)
-                self.session.session_updated.disconnect(self.update_meta)
+                connected.entry_added.disconnect(self.on_entry_added)
+                connected.session_updated.disconnect(self.update_meta)
             except (RuntimeError, TypeError):
                 pass
+            self._connected_session = None
 
-        old_session = self.session
         self.session = session
         if self.session:
-            if old_session != self.session:
-                try:
-                    self.session.entry_added.connect(self.on_entry_added)
-                    self.session.session_updated.connect(self.update_meta)
-                except (RuntimeError, TypeError):
-                    pass
+            if getattr(self, "_connected_session", None) is not session:
+                self.session.entry_added.connect(self.on_entry_added)
+                self.session.session_updated.connect(self.update_meta)
+                self._connected_session = session
             self.header_title_lbl.setText(self.session.display_title)
             self.reload_entries()
             self.update_meta()
@@ -1506,10 +1718,19 @@ class TranscriptPanel(QWidget):
                 pass
 
         self.entry_widgets = []
+        self._unread_count = 0
+        self.new_items_btn.hide()
+        self.entries_container.setUpdatesEnabled(False)
         if self.session:
+            last = len(self.session.entries) - 1
             for i, entry in enumerate(self.session.entries):
-                is_latest = (i == len(self.session.entries) - 1)
-                self.add_entry_widget(entry, is_latest)
+                self.add_entry_widget(entry, i == last)
+        self.entries_container.setUpdatesEnabled(True)
+        self._update_empty_state()
+        if self.entry_widgets:
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(0, self._jump_to_bottom)
 
     def reload_sessions_list(self) -> None:
         while self.sessions_layout.count():
@@ -1524,33 +1745,39 @@ class TranscriptPanel(QWidget):
 
         active_sid = self.session.session_id if self.session else ""
 
-
         if not sessions:
-            lbl = QLabel("Không tìm thấy phiên")
+            msg = f"Không có phiên nào khớp “{query}”" if query else "Chưa có phiên nào"
+            lbl = QLabel(msg)
+            lbl.setWordWrap(True)
             lbl.setFont(font_ui(8.5))
             lbl.setStyleSheet(f"color: {self.theme.dim}; padding: 12px; border: none;")
             self.sessions_layout.addWidget(lbl)
+            self.sessions_layout.addStretch(1)
             return
 
-        # Separate into Pinned and Chats lists matching target UI
         pinned_sessions = [s for s in sessions if s.get("is_pinned")]
         chats_sessions = [s for s in sessions if not s.get("is_pinned")]
 
-        # 2. Pinned Section
-        pinned_header = SidebarSectionHeaderWidget("Pinned", action_icon="", theme=self.theme)
-        self.sessions_layout.addWidget(pinned_header)
-
+        # Pinned section (only when something is pinned — no empty headers)
         if pinned_sessions:
+            self.sessions_layout.addWidget(
+                SidebarSectionHeaderWidget("Đã ghim", action_icon="", theme=self.theme)
+            )
             for s in pinned_sessions:
                 self._add_claude_session_item(s, active_sid)
 
-        # 3. Chats Section
-        chats_header = SidebarSectionHeaderWidget("Chats", action_icon="", theme=self.theme)
-        self.sessions_layout.addWidget(chats_header)
+        # Recent sessions grouped by day ("Hôm nay", "Hôm qua", "7 ngày qua", MM/YYYY)
+        current_group = None
+        for s in chats_sessions:
+            group = s.get("day_group") or "Khác"
+            if group != current_group:
+                current_group = group
+                self.sessions_layout.addWidget(
+                    SidebarSectionHeaderWidget(group, action_icon="", theme=self.theme)
+                )
+            self._add_claude_session_item(s, active_sid)
 
-        if chats_sessions:
-            for s in chats_sessions:
-                self._add_claude_session_item(s, active_sid)
+        self.sessions_layout.addStretch(1)
 
     def _add_claude_session_item(self, session_info: dict, active_sid: str) -> None:
         is_active = (session_info["session_id"] == active_sid)
@@ -1717,12 +1944,21 @@ class TranscriptPanel(QWidget):
         self._summarize_worker = SummarizeWorker(
             api_key=api_key,
             content=content,
+            model=self.settings.data.summary.model if self.settings else "gemini-2.0-flash",
             style=style,
             target_lang=tgt_lang,
             parent=self,
         )
+        # Prevent double submissions while the request is running.
+        self.summarize_btn.setEnabled(False)
+        self.summarize_btn.setText("Đang tóm tắt…")
+
+        def _done():
+            self.summarize_btn.setEnabled(True)
+            self.summarize_btn.setText("Tóm tắt AI")
 
         def on_finished(summary_text: str):
+            _done()
             dialog.set_content(summary_text)
             if hasattr(self, "summary_text_area") and self.summary_text_area:
                 self.summary_text_area.setPlainText(summary_text)
@@ -1730,6 +1966,7 @@ class TranscriptPanel(QWidget):
                 self.summary_container.show()
 
         def on_error(err_msg: str):
+            _done()
             dialog.set_content(f"Không thể tạo tóm tắt:\n\n{err_msg}")
 
         self._summarize_worker.finished.connect(on_finished)
@@ -1740,10 +1977,19 @@ class TranscriptPanel(QWidget):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        if hasattr(self, "new_items_btn") and self.new_items_btn:
-            x = (self.scroll_area.width() - self.new_items_btn.width()) // 2
-            y = self.scroll_area.height() - self.new_items_btn.height() - 14
-            self.new_items_btn.move(max(10, x), max(10, y))
+        self._position_new_items_btn()
+
+    def _position_new_items_btn(self) -> None:
+        if not hasattr(self, "new_items_btn") or not self.new_items_btn:
+            return
+        # The pill lives in right_wrapper; the scroll area sits below the
+        # header there, so use its geometry (the old math ignored the header).
+        geo = self.scroll_area.geometry()
+        btn = self.new_items_btn
+        x = geo.x() + (geo.width() - btn.width()) // 2
+        y = geo.y() + geo.height() - btn.height() - 16
+        btn.move(max(10, x), max(10, y))
+        btn.raise_()
 
     def _on_scroll_changed(self, value: int) -> None:
         vbar = self.scroll_area.verticalScrollBar()
@@ -1752,7 +1998,7 @@ class TranscriptPanel(QWidget):
             self._user_scrolled_up = False
             self._unread_count = 0
             self.new_items_btn.hide()
-        else:
+        elif not self._scroll_anim.state() == QPropertyAnimation.Running:
             self._user_scrolled_up = True
 
     def _get_sidebar_width(self) -> int:
@@ -1775,7 +2021,6 @@ class TranscriptPanel(QWidget):
             self.sessions_scroll.hide()
             self.action_new_btn.hide()
             self.action_artifacts_btn.hide()
-            self.action_customize_btn.hide()
             self.search_toggle_btn.hide()
             self.sidebar_toggle_btn.hide()
             if self.cross_search_input.isVisible():
@@ -1793,7 +2038,6 @@ class TranscriptPanel(QWidget):
             self.sessions_scroll.show()
             self.action_new_btn.show()
             self.action_artifacts_btn.show()
-            self.action_customize_btn.show()
             self.search_toggle_btn.show()
             target_w = getattr(self, "_saved_sidebar_width", 240)
             self._sidebar_anim.setStartValue(curr_width)
@@ -1866,43 +2110,43 @@ class TranscriptPanel(QWidget):
         self._smooth_scroll_to_bottom()
 
     def _smooth_scroll_to_bottom(self) -> None:
-        QApplication.processEvents()
+        # (no processEvents(): re-entering the event loop from a slot could
+        # run other slots mid-update)
         vbar = self.scroll_area.verticalScrollBar()
         self._scroll_anim.stop()
         self._scroll_anim.setStartValue(vbar.value())
         self._scroll_anim.setEndValue(vbar.maximum())
         self._scroll_anim.start()
 
-    def _force_scroll_to_bottom(self) -> None:
-        QApplication.processEvents()
+    def _jump_to_bottom(self) -> None:
         vbar = self.scroll_area.verticalScrollBar()
-        vbar.setValue(vbar.maximum())
         self._scroll_anim.stop()
-        self._scroll_anim.setStartValue(vbar.value())
-        self._scroll_anim.setEndValue(vbar.maximum())
-        self._scroll_anim.start()
+        vbar.setValue(vbar.maximum())
 
     def on_entry_added(self, entry: TranscriptEntry) -> None:
         if self.entry_widgets:
-            prev = self.entry_widgets[-1]
-            prev.is_latest = False
-            prev.setup_ui()
-            prev.update()
+            self.entry_widgets[-1].set_latest(False)
 
         self.add_entry_widget(entry, True)
         self.update_meta()
-
-        self._user_scrolled_up = False
-        self._unread_count = 0
-        self.new_items_btn.hide()
+        self._update_empty_state()
 
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(30, self._force_scroll_to_bottom)
-        QTimer.singleShot(100, self._force_scroll_to_bottom)
+
+        if self._user_scrolled_up:
+            # Reading older lines: don't yank the view — count and offer a jump.
+            self._unread_count += 1
+            self.new_items_btn.setText(f"↓ {self._unread_count} câu mới")
+            self._position_new_items_btn()
+            self.new_items_btn.show()
+        else:
+            # Wait for the new card to be laid out before scrolling.
+            QTimer.singleShot(0, self._smooth_scroll_to_bottom)
 
     def add_entry_widget(self, entry: TranscriptEntry, is_latest: bool) -> None:
         w = TranscriptEntryWidget(entry, self.theme, is_latest)
-        self.entries_layout.addWidget(w)
+        # Insert above the trailing stretch.
+        self.entries_layout.insertWidget(self.entries_layout.count() - 1, w)
         self.entry_widgets.append(w)
 
         text = self.search_input.text().lower()
@@ -1913,15 +2157,6 @@ class TranscriptPanel(QWidget):
     def update_meta(self) -> None:
         if not self.session:
             return
-
-        duration = self.session.duration_s
-        mins = int(duration // 60)
-        secs = int(duration % 60)
-        count = len(self.session.entries)
-
-        src_code = getattr(self.settings.data.ui, 'src_lang', 'auto') if (self.settings and hasattr(self.settings, 'data')) else getattr(self.session, 'src_lang', 'EN')
-        tgt_code = getattr(self.settings.data.ui, 'tgt_lang', 'vi') if (self.settings and hasattr(self.settings, 'data')) else getattr(self.session, 'tgt_lang', 'VI')
-
         self.header_title_lbl.setText(self.session.display_title)
 
     def filter_entries(self, text: str) -> None:
@@ -1960,9 +2195,17 @@ class TranscriptPanel(QWidget):
                 content = self.session.export_md(include_source=inc_src, include_timestamp=inc_ts)
 
             try:
-                Path(file_path).write_text(content, encoding="utf-8")
+                # utf-8-sig: Windows players / Notepad detect Vietnamese correctly.
+                encoding = "utf-8-sig" if ext in (".srt", ".txt") else "utf-8"
+                Path(file_path).write_text(content, encoding=encoding)
             except Exception as e:
-                print("Lỗi khi lưu:", e)
+                QMessageBox.warning(self, "Không thể lưu file", f"Lỗi khi lưu transcript:\n{e}")
+                return
+            QMessageBox.information(
+                self,
+                "Đã xuất transcript",
+                f"Đã lưu {len(self.session.entries)} câu vào:\n{file_path}",
+            )
 
 
 # ───────────────────────────────────── Standalone Window ─────────────

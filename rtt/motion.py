@@ -12,20 +12,18 @@ from PySide6.QtCore import (
     QEasingCurve,
     QPoint,
     QPropertyAnimation,
-    QRect,
-    QRectF,
-    QSize,
     Qt,
-    Signal,
     Property,
 )
-from PySide6.QtGui import QBrush, QColor, QMouseEvent, QPainter, QPainterPath, QPen, QPixmap, QTransform
+from PySide6.QtGui import QMouseEvent, QPainter
 from PySide6.QtWidgets import (
     QFrame,
-    QGraphicsDropShadowEffect,
     QPushButton,
     QSlider,
     QStackedWidget,
+    QStyle,
+    QStyleOptionButton,
+    QStylePainter,
     QWidget,
 )
 
@@ -78,71 +76,40 @@ class ElasticButton(QPushButton):
             super().paintEvent(event)
             return
 
-        painter = QPainter(self)
+        # Draw the (stylesheet-aware) button ourselves with ONE painter.
+        # The old code opened a QPainter and then called the base paintEvent,
+        # which opens a second painter on the same widget: Qt refuses that, so
+        # the button rendered blank for the whole press animation.
+        painter = QStylePainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform)
-
-        # Scale transform centered at the button's middle point
         cx = self.width() / 2.0
         cy = self.height() / 2.0
         painter.translate(cx, cy)
         painter.scale(self._scale, self._scale)
         painter.translate(-cx, -cy)
-
-        # Render original button appearance with scale applied
-        super().paintEvent(event)
+        opt = QStyleOptionButton()
+        self.initStyleOption(opt)
+        painter.drawControl(QStyle.CE_PushButton, opt)
         painter.end()
 
 
 # ---------------------------------------------------------------------------
-# 2. Hover Lift Frame (Card Elevation & Soft Drop-Shadow)
+# 2. Hover Frame (card hover state)
 # ---------------------------------------------------------------------------
 
 class HoverLiftFrame(QFrame):
-    """Card frame that lifts (-2px) smoothly on hover without DWM shadow glitches."""
+    """Card frame with a stylesheet-driven hover state.
+
+    Subclasses style it with ``ClassName:hover { ... }``. The previous
+    "lift" animation painted with two QPainters at once (the base paintEvent
+    could not draw), so a hovered card lost its background and the cards
+    behind bled through.
+    """
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self._lift_offset: float = 0.0
-        self._anim_lift = QPropertyAnimation(self, b"liftOffset", self)
-
-    def get_lift_offset(self) -> float:
-        return self._lift_offset
-
-    def set_lift_offset(self, offset: float) -> None:
-        self._lift_offset = offset
-        self.update()
-
-    liftOffset = Property(float, get_lift_offset, set_lift_offset)
-
-    def enterEvent(self, event) -> None:
-        self._anim_lift.stop()
-        self._anim_lift.setDuration(180)
-        self._anim_lift.setStartValue(self._lift_offset)
-        self._anim_lift.setEndValue(-2.0)
-        self._anim_lift.setEasingCurve(QEasingCurve.OutCubic)
-        self._anim_lift.start()
-        super().enterEvent(event)
-
-    def leaveEvent(self, event) -> None:
-        self._anim_lift.stop()
-        self._anim_lift.setDuration(220)
-        self._anim_lift.setStartValue(self._lift_offset)
-        self._anim_lift.setEndValue(0.0)
-        self._anim_lift.setEasingCurve(QEasingCurve.OutQuad)
-        self._anim_lift.start()
-        super().leaveEvent(event)
-
-    def paintEvent(self, event) -> None:
-        if abs(self._lift_offset) < 0.001:
-            super().paintEvent(event)
-            return
-
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.translate(0, self._lift_offset)
-        super().paintEvent(event)
-        painter.end()
+        self.setAttribute(Qt.WA_Hover, True)
+        self.setAttribute(Qt.WA_StyledBackground, True)
 
 
 # ---------------------------------------------------------------------------

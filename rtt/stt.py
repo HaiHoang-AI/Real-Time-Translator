@@ -188,6 +188,14 @@ class StreamingTranscriber:
         with self._buf_lock:
             self._buf = np.concatenate([self._buf, samples])
 
+    def reset(self) -> None:
+        """Drop buffered audio + partial state (e.g. after a pause)."""
+        with self._buf_lock:
+            self._buf = np.zeros(0, dtype=np.float32)
+        if self._last_partial:
+            self._last_partial = ""
+            self.on_partial("")
+
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, daemon=True, name="stt")
         self._thread.start()
@@ -421,6 +429,12 @@ class MoonshineStreamingTranscriber:
             return
         with self._buf_lock:
             self._buf_queue.append(samples)
+
+    def reset(self) -> None:
+        """Drop queued audio (e.g. after a pause)."""
+        with self._buf_lock:
+            self._buf_queue.clear()
+        self._listener._last_partial = ""
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, daemon=True, name="moonshine-stt")
