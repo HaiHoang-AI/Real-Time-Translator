@@ -169,6 +169,18 @@ class ContextMemory:
 class Translator(Protocol):
     def translate(self, text: str, src: str, tgt: str) -> str: ...
 
+    def translate_preview(self, text: str, src: str, tgt: str, **kw) -> str: ...
+
+
+def _dedupe(items):
+    seen = set()
+    out = []
+    for it in items:
+        if it and it not in seen:
+            seen.add(it)
+            out.append(it)
+    return out
+
 
 class NllbTranslator:
     """NLLB-200 (600M or 1.3B), int8 on CPU/CUDA (fast enough for subtitle cadence).
@@ -281,6 +293,11 @@ class NllbTranslator:
         # ── Term Restoration (post-translation) ───────────────────────────
         return self._locker.restore(translated, mapping)
 
+    def translate_preview(self, text: str, src: str, tgt: str, **kw) -> str:
+        """Fast greedy pass for live (in-progress) subtitles."""
+        kw["beam"] = 1
+        return self.translate(text, src, tgt, **kw)
+
     def _nllb_translate(self, text: str, src: str, tgt: str, beam: int = 2) -> str:
         """Raw NLLB-200 translation without term locking."""
         src_nllb = LANG_TO_NLLB.get(src, src)
@@ -324,6 +341,15 @@ class GeminiTranslator:
         self.device = "cloud/api"
         self._last_error: str = ""
         self._last_notify_time: float = 0.0
+        # (api_version, model, use_thinking_cfg) that last answered — tried
+        # first so a healthy setup costs exactly one request per sentence.
+        self._working: Optional[tuple[str, str, bool]] = None
+        # Circuit breaker: after a total failure, skip the network entirely
+        # for a while instead of paying every timeout on every sentence.
+        self._cooldown_until: float = 0.0
+
+    # Seconds to bypass Gemini after a full failure, by cause.
+    _COOLDOWN = {"auth": 300.0, "429_quota": 45.0, "network_error": 20.0}
 
     def _notify(self, msg: str) -> None:
         now = time.time()
@@ -360,22 +386,26 @@ class GeminiTranslator:
                 )
             return text
 
-        try:
-            translated = self._call_gemini(text, src, tgt, glossary=glossary)
-            if translated:
-                self.context.add(text, translated)
-                self._last_error = ""
-                return translated
-        except Exception as exc:
-            if os.environ.get("RTT_DEBUG") == "1":
-                print(f"[gemini_mt] warning: {exc}, using fallback")
+        if time.time() >= self._cooldown_until:
+            try:
+                translated = self._call_gemini(text, src, tgt, glossary=glossary)
+                if translated:
+                    self.context.add(text, translated)
+                    self._last_error = ""
+                    return translated
+            except Exception as exc:
+                if os.environ.get("RTT_DEBUG") == "1":
+                    print(f"[gemini_mt] warning: {exc}, using fallback")
+            self._cooldown_until = time.time() + self._COOLDOWN.get(self._last_error, 10.0)
 
         # Fallback to local NLLB 1.3B on any API error or empty response
         if self.fallback:
             if self._last_error == "429_quota":
-                self._notify("[Cảnh báo] Hết hạn ngạch Gemini (429) — Đang tự động dịch bằng NLLB 1.3B Offline")
+                self._notify("Hết hạn ngạch Gemini (429) — tạm dịch bằng NLLB offline")
+            elif self._last_error == "auth":
+                self._notify("Gemini API key không hợp lệ — tạm dịch bằng NLLB offline")
             else:
-                self._notify("[Cảnh báo] Mất kết nối Gemini API — Đang tự động dịch bằng NLLB 1.3B Offline")
+                self._notify("Mất kết nối Gemini — tạm dịch bằng NLLB offline")
 
             out = self.fallback.translate(
                 text, src, tgt, beam=beam, glossary=glossary,
@@ -385,6 +415,18 @@ class GeminiTranslator:
             return out
 
         return text
+
+    def translate_preview(self, text: str, src: str, tgt: str, **kw) -> str:
+        """Live in-progress preview: local NLLB only.
+
+        Sending every partial (~3/s while someone talks) to Gemini burned the
+        free-tier quota within minutes and stuffed half-sentences into the
+        context memory that conditions the real (committed) translations.
+        """
+        if self.fallback:
+            kw["beam"] = 1
+            return self.fallback.translate(text, src, tgt, **kw)
+        return ""
 
     def _nllb_translate(self, text: str, src: str, tgt: str, beam: int = 1) -> str:
         """Forward raw translation to fallback NLLB when in speed mode or raw mode."""
@@ -419,8 +461,8 @@ class GeminiTranslator:
 
         user_content = f"{topic_section}{context_section}{glossary_section}\nCâu cần dịch: {text}"
 
-        candidates = [
-            ("v1beta", self.model),
+        candidates = _dedupe([
+            ("v1beta", self.model.replace("models/", "")),
             ("v1beta", "gemini-2.5-flash-lite"),
             ("v1beta", "gemini-2.5-flash"),
             ("v1beta", "gemini-flash-latest"),
@@ -428,7 +470,7 @@ class GeminiTranslator:
             ("v1beta", "gemini-2.0-flash"),
             ("v1beta", "gemini-1.5-flash"),
             ("v1", "gemini-1.5-flash"),
-        ]
+        ])
 
         payload = {
             "system_instruction": {
@@ -466,43 +508,65 @@ class GeminiTranslator:
         }
         data_plain = json.dumps(payload_plain).encode("utf-8")
 
+        attempts: list[tuple[str, str, bool]] = []
+        if self._working:
+            attempts.append(self._working)
         for api_ver, m_name in candidates:
-            if not m_name:
-                continue
-            clean_m = m_name.replace("models/", "")
-            url = f"https://generativelanguage.googleapis.com/{api_ver}/models/{clean_m}:generateContent?key={self.api_key}"
-            
-            for post_data in (data, data_plain):
-                req = urllib.request.Request(
-                    url,
-                    data=post_data,
-                    headers={"Content-Type": "application/json"},
-                    method="POST"
-                )
+            for thinking in (True, False):
+                if (api_ver, m_name, thinking) not in attempts:
+                    attempts.append((api_ver, m_name, thinking))
+
+        quota_hits = 0
+        for api_ver, m_name, thinking in attempts:
+            url = (
+                f"https://generativelanguage.googleapis.com/{api_ver}/models/"
+                f"{m_name}:generateContent"
+            )
+            req = urllib.request.Request(
+                url,
+                data=data if thinking else data_plain,
+                # Key in a header, not the URL: keeps it out of proxy/server logs.
+                headers={"Content-Type": "application/json", "x-goog-api-key": self.api_key},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=3.5) as resp:
+                    body = json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+                detail = ""
                 try:
-                    with urllib.request.urlopen(req, timeout=3.5) as resp:
-                        body = json.loads(resp.read().decode("utf-8"))
-                        cand_list = body.get("candidates", [])
-                        if cand_list:
-                            parts = cand_list[0].get("content", {}).get("parts", [])
-                            if parts:
-                                res = parts[0].get("text", "").strip()
-                                res = _clean_llm_translation(res)
-                                if res:
-                                    return res
-                    break
-                except urllib.error.HTTPError as e:
-                    if e.code == 429:
-                        self._last_error = "429_quota"
-                    else:
-                        self._last_error = f"http_{e.code}"
-                    continue
-                except (urllib.error.URLError, TimeoutError, OSError):
-                    self._last_error = "network_error"
-                    continue
+                    detail = e.read().decode("utf-8", errors="ignore")
                 except Exception:
-                    self._last_error = "error"
+                    pass
+                if e.code in (401, 403) or "API_KEY_INVALID" in detail or "API key not valid" in detail:
+                    self._last_error = "auth"
+                    return ""  # no model will work with a bad key
+                if e.code == 429:
+                    self._last_error = "429_quota"
+                    quota_hits += 1
+                    if quota_hits >= 2:
+                        return ""  # quota is per-key; stop hammering
                     continue
+                # 404 = model not served for this key, 400 = thinkingConfig
+                # unsupported -> try the next combination.
+                self._last_error = f"http_{e.code}"
+                if self._working == (api_ver, m_name, thinking):
+                    self._working = None
+                continue
+            except (urllib.error.URLError, TimeoutError, OSError):
+                # Offline / DNS / timeout: every other model would fail the same way.
+                self._last_error = "network_error"
+                return ""
+            except Exception:
+                self._last_error = "error"
+                continue
+
+            cand_list = body.get("candidates", [])
+            parts = cand_list[0].get("content", {}).get("parts", []) if cand_list else []
+            res = _clean_llm_translation(parts[0].get("text", "").strip()) if parts else ""
+            if res:
+                self._working = (api_ver, m_name, thinking)
+                return res
         return ""
 
 
@@ -527,6 +591,8 @@ class OllamaTranslator:
         self.on_status = on_status
         self.device = "local/gpu"
         self._last_notify_time: float = 0.0
+        self._working_model: Optional[str] = None
+        self._cooldown_until: float = 0.0
 
     def _notify(self, msg: str) -> None:
         now = time.time()
@@ -551,21 +617,24 @@ class OllamaTranslator:
         auto_lock_camel: bool = True,
     ) -> str:
         text = text.strip()
-        if not text:
-            return ""
+        if not text or src == tgt:
+            return text
 
-        try:
-            res = self._call_ollama(text, src, tgt, glossary=glossary)
-            if res:
-                self.context.add(text, res)
-                return res
-        except Exception as exc:
-            if os.environ.get("RTT_DEBUG") == "1":
-                print(f"[ollama_mt] warning: {exc}, using fallback")
+        if time.time() >= self._cooldown_until:
+            try:
+                res = self._call_ollama(text, src, tgt, glossary=glossary)
+                if res:
+                    self.context.add(text, res)
+                    return res
+            except Exception as exc:
+                if os.environ.get("RTT_DEBUG") == "1":
+                    print(f"[ollama_mt] warning: {exc}, using fallback")
+            # Ollama not running / no model pulled: stop retrying every sentence.
+            self._cooldown_until = time.time() + 20.0
 
         # Fallback to local NLLB 1.3B on any Ollama error or empty response
         if self.fallback:
-            self._notify("[Cảnh báo] Không kết nối được Ollama — Đang tự động dịch bằng NLLB 1.3B Offline")
+            self._notify("Không kết nối được Ollama — tạm dịch bằng NLLB offline")
             out = self.fallback.translate(
                 text, src, tgt, beam=beam, glossary=glossary,
                 auto_lock_caps=auto_lock_caps, auto_lock_camel=auto_lock_camel
@@ -574,6 +643,13 @@ class OllamaTranslator:
             return out
 
         return text
+
+    def translate_preview(self, text: str, src: str, tgt: str, **kw) -> str:
+        """Live preview via local NLLB — keeps the LLM free for commits."""
+        if self.fallback:
+            kw["beam"] = 1
+            return self.fallback.translate(text, src, tgt, **kw)
+        return ""
 
     def _nllb_translate(self, text: str, src: str, tgt: str, beam: int = 1) -> str:
         if self.fallback:
@@ -615,10 +691,9 @@ class OllamaTranslator:
 
         messages.append({"role": "user", "content": f"Dịch sang {tgt_name}:\n{text}"})
 
-        candidate_models = [self.model, "llama3.2:3b", "qwen2.5:3b", "qwen2.5:7b"]
-        # Remove duplicates while preserving order
-        seen = set()
-        models_to_try = [m for m in candidate_models if m and not (m in seen or seen.add(m))]
+        models_to_try = _dedupe(
+            [self._working_model, self.model, "llama3.2:3b", "qwen2.5:3b", "qwen2.5:7b"]
+        )
 
         for m_name in models_to_try:
             url = f"{self.host}/api/chat"
@@ -644,7 +719,12 @@ class OllamaTranslator:
                     res = body.get("message", {}).get("content", "").strip()
                     res = _clean_llm_translation(res)
                     if res:
+                        self._working_model = m_name
                         return res
+            except urllib.error.HTTPError:
+                continue  # model not pulled -> try the next one
+            except (urllib.error.URLError, TimeoutError, OSError):
+                return ""  # server down: other models won't answer either
             except Exception:
                 continue
 

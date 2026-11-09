@@ -15,13 +15,14 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QThread, Signal
 
 
 def _transcripts_dir() -> Path:
@@ -33,6 +34,46 @@ def _transcripts_dir() -> Path:
     d = base / "rtt" / "transcripts"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write via a temp file + os.replace so a crash never leaves half a JSON file."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+_id_lock = threading.Lock()
+
+
+def _new_session_id() -> str:
+    """YYYYMMDD_HHMMSS, suffixed when taken.
+
+    Two sessions created within the same second (manual "new session" right
+    after an inactivity auto-split, quick double click…) used to get the same
+    id and silently overwrite each other's file.
+    """
+    with _id_lock:
+        base = datetime.now().strftime("%Y%m%d_%H%M%S")
+        folder = _transcripts_dir()
+        sid, n = base, 2
+        while sid in _issued_ids or (folder / f"session_{sid}.json").exists():
+            sid = f"{base}_{n}"
+            n += 1
+        _issued_ids.add(sid)
+        return sid
+
+
+_issued_ids: set[str] = set()
+
+
+def _format_clock(seconds: float) -> str:
+    total = int(max(0.0, seconds))
+    hours, rem = divmod(total, 3600)
+    mins, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours:02d}:{mins:02d}:{secs:02d}"
+    return f"{mins:02d}:{secs:02d}"
 
 
 @dataclass
@@ -77,7 +118,7 @@ class TranscriptSession(QObject):
         parent=None,
     ) -> None:
         super().__init__(parent)
-        self.session_id = session_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.session_id = session_id or _new_session_id()
         self.start_time = time.time()
         self.start_time_iso = datetime.now().isoformat()
         self.last_active_time = time.time()
@@ -88,6 +129,9 @@ class TranscriptSession(QObject):
         self._is_paused = False
         self.entries: List[TranscriptEntry] = []
         self._file_path = _transcripts_dir() / f"session_{self.session_id}.json"
+        # add_entry() runs on the MT thread while rename/pin run on the UI
+        # thread — serialize mutations + disk writes.
+        self._io_lock = threading.RLock()
 
     @property
     def is_paused(self) -> bool:
@@ -135,69 +179,66 @@ class TranscriptSession(QObject):
         if self._is_paused:
             return None
 
-        self.last_active_time = time.time()
-        now_s = time.time() - self.start_time
-        start_s = max(0.0, now_s - duration_s)
-        end_s = now_s
+        with self._io_lock:
+            self.last_active_time = time.time()
+            now_s = max(0.0, time.time() - self.start_time)
+            # Keep subtitle timings monotonic even if the clock jumps.
+            prev_end = self.entries[-1].end_time_s if self.entries else 0.0
+            end_s = max(now_s, prev_end + 0.5)
+            start_s = max(prev_end, end_s - duration_s)
 
-        mins = int(end_s // 60)
-        secs = int(end_s % 60)
-        hours = mins // 60
-        mins = mins % 60
-        if hours > 0:
-            time_str = f"{hours:02d}:{mins:02d}:{secs:02d}"
-        else:
-            time_str = f"{mins:02d}:{secs:02d}"
-
-        entry = TranscriptEntry(
-            index=len(self.entries) + 1,
-            start_time_s=start_s,
-            end_time_s=end_s,
-            time_str=time_str,
-            source_text=source_text.strip(),
-            target_text=target_text.strip(),
-        )
-        self.entries.append(entry)
-        self.save()
+            entry = TranscriptEntry(
+                index=len(self.entries) + 1,
+                start_time_s=start_s,
+                end_time_s=end_s,
+                time_str=_format_clock(end_s),
+                source_text=source_text.strip(),
+                target_text=target_text.strip(),
+            )
+            self.entries.append(entry)
+            self.save()
         self.entry_added.emit(entry)
         self.session_updated.emit()
         return entry
 
     @property
     def duration_s(self) -> float:
-        return max(0.0, time.time() - self.start_time)
+        """Span of recorded content (start → last activity).
+
+        Using the wall clock (now - start) made re-opened sessions report
+        ever-growing durations (days) and persisted them to disk.
+        """
+        return max(0.0, self.last_active_time - self.start_time)
 
     @property
     def formatted_duration(self) -> str:
-        d = int(self.duration_s)
-        mins = d // 60
-        secs = d % 60
-        return f"{mins:02d}:{secs:02d}"
+        return _format_clock(self.duration_s)
 
     def save(self) -> None:
-        """Persist session data to JSON file."""
-        meta = SessionMetadata(
-            session_id=self.session_id,
-            session_name=self.session_name,
-            start_time_iso=self.start_time_iso,
-            duration_s=self.duration_s,
-            total_sentences=len(self.entries),
-            src_lang=self.src_lang,
-            tgt_lang=self.tgt_lang,
-            is_pinned=self.is_pinned,
-            last_active_iso=datetime.fromtimestamp(self.last_active_time).isoformat(),
-        )
-        payload = {
-            "metadata": asdict(meta),
-            "entries": [asdict(e) for e in self.entries],
-        }
-        try:
-            self._file_path.write_text(
-                json.dumps(payload, indent=2, ensure_ascii=False),
-                encoding="utf-8",
+        """Persist session data to JSON file (atomic, thread-safe)."""
+        with self._io_lock:
+            meta = SessionMetadata(
+                session_id=self.session_id,
+                session_name=self.session_name,
+                start_time_iso=self.start_time_iso,
+                duration_s=self.duration_s,
+                total_sentences=len(self.entries),
+                src_lang=self.src_lang,
+                tgt_lang=self.tgt_lang,
+                is_pinned=self.is_pinned,
+                last_active_iso=datetime.fromtimestamp(self.last_active_time).isoformat(),
             )
-        except Exception as exc:
-            print(f"[history] error saving session {self.session_id}: {exc}")
+            payload = {
+                "metadata": asdict(meta),
+                "entries": [asdict(e) for e in self.entries],
+            }
+            try:
+                _atomic_write_text(
+                    self._file_path,
+                    json.dumps(payload, indent=2, ensure_ascii=False),
+                )
+            except Exception as exc:
+                print(f"[history] error saving session {self.session_id}: {exc}")
 
     @classmethod
     def load_from_file(cls, path_or_id: str | Path) -> Optional[TranscriptSession]:
@@ -228,9 +269,20 @@ class TranscriptSession(QObject):
                 sess.start_time = datetime.fromisoformat(sess.start_time_iso).timestamp()
             except Exception:
                 sess.start_time = p.stat().st_ctime
+            # Restore real last activity so inactivity auto-split and
+            # duration work for re-opened sessions.
+            try:
+                sess.last_active_time = datetime.fromisoformat(
+                    meta.get("last_active_iso", "")
+                ).timestamp()
+            except Exception:
+                sess.last_active_time = max(sess.start_time, p.stat().st_mtime)
 
+            fields = set(TranscriptEntry.__dataclass_fields__)
             sess.entries = [
-                TranscriptEntry(**e) for e in raw.get("entries", [])
+                TranscriptEntry(**{k: v for k, v in e.items() if k in fields})
+                for e in raw.get("entries", [])
+                if isinstance(e, dict)
             ]
             sess._file_path = p
             return sess
@@ -340,8 +392,12 @@ class SessionManager(QObject):
             src_lang=self.src_lang,
             tgt_lang=self.tgt_lang,
             session_name=name,
-            parent=self,
         )
+        # May be called from the STT thread (inactivity auto-split): hand the
+        # QObject to the manager's thread before parenting it.
+        if QThread.currentThread() is not self.thread():
+            sess.moveToThread(self.thread())
+        sess.setParent(self)
         sess.save()
         self.active_session = sess
         sess.paused_changed.connect(self.paused_changed.emit)
@@ -396,10 +452,12 @@ class SessionManager(QObject):
 
         # If deleted active session, switch to newest or create a new one
         if self.active_session and self.active_session.session_id == session_id:
-            past = self.list_sessions()
-            if past:
-                self.switch_to(past[0]["session_id"])
-            else:
+            # Fall back to the most recent session (not the first pinned one).
+            past = sorted(self.list_sessions(), key=lambda s: s["start_dt"], reverse=True)
+            # Drop the reference first: switch_to() saves the active session,
+            # which used to re-create the file we just deleted.
+            self.active_session = None
+            if not (past and self.switch_to(past[0]["session_id"])):
                 self.create_session()
 
         self.session_list_changed.emit()
@@ -474,10 +532,16 @@ class SessionManager(QObject):
                 # Cross-session search matching
                 if q:
                     matched = False
-                    if q in display_title.lower() or q in sid.lower() or q in time_str:
+                    date_str = start_dt.strftime("%d/%m/%Y")
+                    if (
+                        q in display_title.lower()
+                        or q in sid.lower()
+                        or q in time_str
+                        or q in date_str
+                    ):
                         matched = True
                     else:
-                        for e in entries:
+                        for e in raw.get("entries", []):
                             if q in (e.get("source_text", "").lower()) or q in (e.get("target_text", "").lower()):
                                 matched = True
                                 break
@@ -533,12 +597,15 @@ class SessionManager(QObject):
         cutoff = datetime.now() - timedelta(days=max_days)
         deleted = 0
         folder = _transcripts_dir()
+        active_id = self.active_session.session_id if self.active_session else None
         for p in folder.glob("session_*.json"):
             try:
                 raw = json.loads(p.read_text("utf-8"))
                 meta = raw.get("metadata", {})
                 if meta.get("is_pinned", False):
                     continue  # Pinned sessions are never auto-deleted!
+                if active_id and meta.get("session_id") == active_id:
+                    continue  # never delete the session we are recording into
                 mtime = datetime.fromtimestamp(p.stat().st_mtime)
                 if mtime < cutoff:
                     p.unlink()

@@ -142,6 +142,11 @@ class _DualSubtitleWidget(QWidget):
         self._prev_text = ""
         self._curr_text = ""
         self._partial_text = ""
+        # Pipeline/status notices live in their own line so they never push
+        # real subtitles out of the two-line history.
+        self._status_text = ""
+        # Which edge of this (tall, mostly transparent) widget the card hugs.
+        self._anchor = "bottom"
 
         self._anim_progress = 1.0  # 0.0 -> 1.0
 
@@ -188,6 +193,22 @@ class _DualSubtitleWidget(QWidget):
             self._alignment = align
             self.update()
 
+    def set_anchor(self, anchor: str) -> None:
+        """'bottom' | 'center' | 'top' — grow the card away from that edge."""
+        if anchor in ("bottom", "center", "top") and anchor != self._anchor:
+            self._anchor = anchor
+            self.update()
+
+    def set_status_text(self, text: str) -> None:
+        text = (text or "").strip()
+        if text != self._status_text:
+            self._status_text = text
+            self.update()
+
+    def clear_subtitles(self) -> None:
+        self._old_prev_text = self._prev_text = self._curr_text = self._partial_text = ""
+        self.update()
+
     def _recalc_height(self) -> None:
         font_curr = QFont(self._font_family, self._main_pt, QFont.DemiBold)
         line_h = QFontMetrics(font_curr).height()
@@ -216,7 +237,12 @@ class _DualSubtitleWidget(QWidget):
 
     def set_committed_text(self, text: str) -> None:
         text = text.strip()
-        if not text or text == self._curr_text:
+        if not text:
+            # Empty commit = clear request (pause / test subtitle timeout).
+            if self._curr_text or self._prev_text:
+                self.clear_subtitles()
+            return
+        if text == self._curr_text:
             return
 
         if self._curr_text and self._is_continuation(self._curr_text, text):
@@ -241,7 +267,9 @@ class _DualSubtitleWidget(QWidget):
             self.update()
 
     def paintEvent(self, _event) -> None:
-        if not self._prev_text and not self._curr_text and not self._partial_text:
+        if not (self._prev_text or self._curr_text or self._partial_text or self._status_text):
+            if self.pause_btn.isVisible():
+                self.pause_btn.hide()
             return
 
         painter = QPainter(self)
@@ -280,16 +308,34 @@ class _DualSubtitleWidget(QWidget):
             m_interp = QFontMetrics(font_interp)
             interp_lines = self._wrap(m_interp, self._prev_text, max_wrap_width)[:3]
 
+        status_lines = (
+            self._wrap(m_part, self._status_text, max_wrap_width)[:2] if self._status_text else []
+        )
+
         h_prev = int(m_prev.height() * 1.35)
         h_curr = int(m_curr.height() * 1.35)
         h_part = int(m_part.height() * 1.35)
 
-        n_prev = max(1, len(prev_lines)) if prev_lines else 0
-        n_curr = max(1, len(curr_lines)) if curr_lines else 0
+        # ── Vertical layout, relative to the top of the text block ──
+        # Each block: first baseline = cursor + ascent; block height uses the
+        # real glyph height for its last line (no trailing leading).
+        def block_h(n: int, h: int, m: QFontMetrics) -> int:
+            return (n - 1) * h + m.height() if n else 0
 
-        y_top = 16 + m_prev.ascent()
-        y_curr = y_top + (n_prev * h_prev) + 12
-        y_part = y_curr + (n_curr * h_curr) + 8
+        cursor = 0
+        y_top = cursor + m_prev.ascent()
+        if prev_lines:
+            cursor += block_h(len(prev_lines), h_prev, m_prev) + 10
+        y_curr = cursor + m_curr.ascent()
+        if curr_lines:
+            cursor += block_h(len(curr_lines), h_curr, m_curr) + 8
+        y_part = cursor + m_part.ascent()
+        if part_lines:
+            cursor += block_h(len(part_lines), h_part, m_part) + 6
+        y_status = cursor + m_part.ascent()
+        if status_lines:
+            cursor += block_h(len(status_lines), h_part, m_part) + 6
+        content_h = max(0, cursor - 6)
 
         # Measure max width across ALL rendered lines using their EXACT font metrics
         max_line_w = 0
@@ -299,7 +345,7 @@ class _DualSubtitleWidget(QWidget):
             max_line_w = max(max_line_w, m_curr.horizontalAdvance(l))
         for l in interp_lines:
             max_line_w = max(max_line_w, m_interp.horizontalAdvance(l))
-        for l in part_lines:
+        for l in part_lines + status_lines:
             max_line_w = max(max_line_w, m_part.horizontalAdvance(l))
 
         if max_line_w == 0:
@@ -308,10 +354,21 @@ class _DualSubtitleWidget(QWidget):
             return
 
         card_w = max(target_card_w, min(self.width() - 48, max_line_w + (pad_x * 2) + 28))
-        total_text_h = (y_part + len(part_lines)*h_part if part_lines else y_curr + len(curr_lines)*h_curr) - (y_top - m_prev.ascent())
-        card_h = total_text_h + (pad_y * 2)
+        card_h = content_h + (pad_y * 2)
 
-        min_y = y_top - m_prev.ascent() - pad_y
+        # Hug the configured screen edge: a bottom subtitle used to float
+        # ~half a window above the bottom because the card was top-anchored.
+        if self._anchor == "top":
+            min_y = 2.0
+        elif self._anchor == "center":
+            min_y = max(2.0, (self.height() - card_h) / 2.0)
+        else:
+            min_y = max(2.0, float(self.height() - card_h - 2))
+        off = int(min_y + pad_y)
+        y_top += off
+        y_curr += off
+        y_part += off
+        y_status += off
 
         if self._alignment == "left":
             card_x = 24.0
@@ -353,8 +410,9 @@ class _DualSubtitleWidget(QWidget):
             alpha_old = int(255 * 0.65 * (1.0 - p))
             if alpha_old > 0:
                 y_old = y_top - int(12 * p)
+                old_lines = self._wrap(m_prev, self._old_prev_text, max_wrap_width)[:3]
                 self._draw_lines(
-                    painter, font_prev, prev_lines, y_old,
+                    painter, font_prev, old_lines, y_old,
                     QColor(255, 255, 255, alpha_old),
                     QColor(0, 0, 0, int(220 * (1.0 - p))),
                     get_x,
@@ -410,6 +468,15 @@ class _DualSubtitleWidget(QWidget):
                 get_x,
             )
 
+        # ── Step 6: Status notice (model loading, fallbacks, lock state) ──
+        if status_lines:
+            self._draw_lines(
+                painter, font_part, status_lines, y_status,
+                QColor(52, 211, 153, 235),  # emerald, matches app accent
+                QColor(0, 0, 0, 150),
+                get_x,
+            )
+
         painter.end()
 
     def _draw_lines(
@@ -426,15 +493,24 @@ class _DualSubtitleWidget(QWidget):
         metrics = QFontMetrics(font)
         line_h = int(metrics.height() * 1.35)
 
+        # Round joins: miter spikes poked into neighbouring glyphs.
+        outline = QPen(outline_color, 4)
+        outline.setJoinStyle(Qt.RoundJoin)
+        outline.setCapStyle(Qt.RoundCap)
+
         cur_y = start_y
         for line in lines:
             line_w = metrics.horizontalAdvance(line)
             x = get_x_fn(line_w)
 
             path = QPainterPath()
+            # Winding fill: with the default odd-even rule, overlapping glyph
+            # contours (Vietnamese diacritics, some joins) rendered as holes.
+            path.setFillRule(Qt.WindingFill)
             path.addText(x, cur_y, font, line)
-            painter.setPen(QPen(outline_color, 4))
-            painter.drawPath(path)
+            # strokePath() never fills with the current brush (drawPath used
+            # to paint the glyphs in the card colour first).
+            painter.strokePath(path, outline)
             painter.fillPath(path, color)
             cur_y += line_h
 
@@ -473,7 +549,15 @@ class SubtitleOverlay(QWidget):
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
-        self._click_through(False)
+        self._transparent_for_mouse = False
+        self._dragged = False
+
+        from PySide6.QtCore import QTimer
+
+        # Auto-hide for transient notices (lock/unlock hints).
+        self._status_timer = QTimer(self)
+        self._status_timer.setSingleShot(True)
+        self._status_timer.timeout.connect(lambda: self.subtitle_widget.set_status_text(""))
 
         use_custom = settings.data.ui.use_custom_fonts if settings else False
         try:
@@ -546,12 +630,27 @@ class SubtitleOverlay(QWidget):
         self.resize(width, height)
 
         pos = settings.data.display.position if settings else "bottom"
+        self.subtitle_widget.set_anchor(pos if pos in ("top", "center") else "bottom")
+
+        # A position the user dragged to wins over the preset — it used to be
+        # thrown away on every settings change (e.g. moving the font slider).
+        custom = list(getattr(settings.data.display, "custom_pos", []) or []) if settings else []
+        if len(custom) == 2:
+            from PySide6.QtCore import QRect
+
+            target = QRect(int(custom[0]), int(custom[1]), width, height)
+            # Only if it is still (mostly) on a connected screen.
+            for scr in QGuiApplication.screens():
+                if scr.availableGeometry().intersects(target.adjusted(width // 3, 0, -width // 3, 0)):
+                    self.move(target.topLeft())
+                    return
+
         if pos == "top":
             y = screen.y() + 32
         elif pos == "center":
             y = screen.y() + (screen.height() - height) // 2
         else:  # bottom
-            y = screen.y() + screen.height() - height - 48
+            y = screen.y() + screen.height() - height - 32
 
         self.move(screen.x() + (screen.width() - width) // 2, y)
 
@@ -576,27 +675,52 @@ class SubtitleOverlay(QWidget):
         self._apply_position(s)
 
     def _click_through(self, enabled: bool) -> None:
+        """Lock (clicks go to the app underneath) or unlock (drag / pause button).
+
+        WA_TransparentForMouseEvents only makes *Qt* ignore input; other apps
+        still could not be clicked through. WindowTransparentForInput sets the
+        native WS_EX_TRANSPARENT style. Changing flags needs a re-show.
+        """
         self._transparent_for_mouse = enabled
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, enabled)
+        visible = self.isVisible()
+        self.setWindowFlag(Qt.WindowTransparentForInput, enabled)
+        if visible:
+            self.show()
 
     def toggle_move_mode(self) -> None:
-        """Ctrl+Alt+S: let the user drag the overlay, then lock it again."""
+        """Ctrl+Alt+S: lock the overlay (click-through) / unlock it to drag."""
         self._click_through(not self._transparent_for_mouse)
-        self.setWindowOpacity(0.85 if not self._transparent_for_mouse else 1.0)
+        if self._transparent_for_mouse:
+            self._flash_status("Đã khoá phụ đề: chuột xuyên qua (Ctrl+Alt+S để mở khoá)")
+        else:
+            self._flash_status("Đã mở khoá phụ đề: kéo để di chuyển (Ctrl+Alt+S để khoá)")
+
+    def _flash_status(self, text: str, ms: int = 2600) -> None:
+        self.subtitle_widget.set_status_text(text)
+        self._status_timer.start(ms)
 
     def _show_status(self, text: str) -> None:
-        self.subtitle_widget.set_committed_text(text)
+        # Pipeline notices go to the dedicated status line — they used to be
+        # injected as committed subtitles and pushed real lines away.
+        self._status_timer.stop()
+        self.subtitle_widget.set_status_text(text)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
             self._drag_origin = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self._dragged = False
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._drag_origin is not None:
             self.move(event.globalPosition().toPoint() - self._drag_origin)
+            self._dragged = True
 
     def mouseReleaseEvent(self, _event: QMouseEvent) -> None:
         self._drag_origin = None
+        if self._dragged and self._settings is not None:
+            self._dragged = False
+            top_left = self.frameGeometry().topLeft()
+            self._settings.update(display={"custom_pos": [top_left.x(), top_left.y()]})
 
 
 def main() -> None:

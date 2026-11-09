@@ -118,6 +118,15 @@ class ToggleSwitch(QCheckBox):
         self._anim.setEasingCurve(QEasingCurve.OutBack)
         self.toggled.connect(self._start_anim)
 
+    def setChecked(self, checked: bool) -> None:  # noqa: N802 - Qt API
+        # Programmatic changes (loading settings) snap without animating, and
+        # also when signals are blocked (the thumb used to stay stale then).
+        super().setChecked(checked)
+        if self.signalsBlocked() or not self.isVisible():
+            self._anim.stop()
+            self._thumb_pos = 1.0 if checked else 0.0
+            self.update()
+
     def _get_thumb_pos(self) -> float:
         return self._thumb_pos
 
@@ -133,37 +142,43 @@ class ToggleSwitch(QCheckBox):
         self._anim.setEndValue(1.0 if checked else 0.0)
         self._anim.start()
 
+    def hitButton(self, pos) -> bool:  # whole switch is clickable
+        return self.rect().contains(pos)
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        rect = QRectF(0, 0, self.width(), self.height())
+        # Geometry derived from the widget size (it was hard-coded for 40×22).
+        w, h = float(self.width()), float(self.height())
+        rect = QRectF(0.5, 0.5, w - 1.0, h - 1.0)
+        radius = rect.height() / 2.0
         path = QPainterPath()
-        path.addRoundedRect(rect, 11, 11)
+        path.addRoundedRect(rect, radius, radius)
 
-        off_col = QColor(self.theme.raised)
+        is_light = getattr(self.theme, "name", "dark") == "light"
+        off_col = QColor("#D9D3C9" if is_light else "#3A3F4E")
         on_col = QColor(self.theme.accent)
-        bg_r = off_col.red() + (on_col.red() - off_col.red()) * self._thumb_pos
-        bg_g = off_col.green() + (on_col.green() - off_col.green()) * self._thumb_pos
-        bg_b = off_col.blue() + (on_col.blue() - off_col.blue()) * self._thumb_pos
-        bg_col = QColor(int(bg_r), int(bg_g), int(bg_b))
-
+        t = max(0.0, min(1.0, self._thumb_pos))
+        bg_col = QColor(
+            int(off_col.red() + (on_col.red() - off_col.red()) * t),
+            int(off_col.green() + (on_col.green() - off_col.green()) * t),
+            int(off_col.blue() + (on_col.blue() - off_col.blue()) * t),
+        )
+        if not self.isEnabled():
+            bg_col.setAlpha(110)
         painter.fillPath(path, bg_col)
 
-        pen = QPen(QColor(self.theme.border_strong))
-        pen.setWidthF(1.2)
-        painter.setPen(pen)
-        painter.drawPath(path)
-
-        min_x = 3.0
-        max_x = self.width() - 19.0
+        pad = 3.0
+        d = h - 2 * pad
+        min_x = pad
+        max_x = w - pad - d
         thumb_x = min_x + (max_x - min_x) * self._thumb_pos
-        thumb_rect = QRectF(thumb_x, 3.0, 16.0, 16.0)
-
-        thumb_path = QPainterPath()
-        thumb_path.addRoundedRect(thumb_rect, 8, 8)
         painter.setPen(Qt.NoPen)
-        painter.fillPath(thumb_path, QColor("#FFFFFF" if self._thumb_pos > 0.5 else self.theme.text))
+        painter.setBrush(QColor(0, 0, 0, 40))
+        painter.drawEllipse(QRectF(thumb_x, pad + 0.8, d, d))
+        painter.setBrush(QColor("#FFFFFF"))
+        painter.drawEllipse(QRectF(thumb_x, pad, d, d))
         painter.end()
 
 
@@ -248,15 +263,21 @@ class SliderWidget(QWidget):
         
         self.lbl = QLabel(label)
         font = font_ui(400)
-        font.setPixelSize(12)
+        font.setPixelSize(13)
         self.lbl.setFont(font)
-        self.lbl.setStyleSheet(f"color: {theme.dim};")
-        
+        self.lbl.setStyleSheet(f"color: {theme.text};")
+        # Fixed columns so stacked sliders line up (their tracks used to start
+        # at different x positions depending on the label length).
+        self.lbl.setFixedWidth(160)
+
         self.val_lbl = QLabel("0")
         val_font = font_mono(500)
         val_font.setPixelSize(12)
         self.val_lbl.setFont(val_font)
-        self.val_lbl.setStyleSheet(f"color: {theme.text};")
+        self.val_lbl.setStyleSheet(f"color: {theme.dim};")
+        self.val_lbl.setFixedWidth(58)
+        self.val_lbl.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.setSpacing(12)
         
         self.slider = PhysicsSlider(Qt.Horizontal)
         self.slider.setRange(min_v, max_v)
@@ -281,8 +302,8 @@ class SliderWidget(QWidget):
         self.slider.valueChanged.connect(self._on_change)
         
         layout.addWidget(self.lbl)
+        layout.addWidget(self.slider, 1)
         layout.addWidget(self.val_lbl)
-        layout.addWidget(self.slider)
         
     def _on_change(self, v):
         display_val = str(v)
@@ -333,30 +354,46 @@ class DisplayTab(QWidget):
         self.bridge = bridge
         self.setMinimumHeight(480)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 16, 20, 20)
+        layout.setContentsMargins(24, 22, 24, 20)
         layout.setSpacing(14)
-        
-        # Preview Box
-        self.preview_box = QWidget()
-        self.preview_box.setFixedHeight(85)
+
+        page_title = QLabel("Hiển thị & ngôn ngữ")
+        page_title.setStyleSheet(f"color: {theme.text}; font-size: 16px; font-weight: 600;")
+        layout.addWidget(page_title)
+
+        # App theme (there was no way to switch dark/light from the UI)
+        theme_row = QHBoxLayout()
+        theme_lbl = QLabel("Giao diện ứng dụng")
+        theme_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px;")
+        self.theme_seg = SegmentControl(["Tối", "Sáng", "Theo hệ thống"], theme)
+        self.theme_seg.valueChanged.connect(self._on_theme_change)
+        theme_row.addWidget(theme_lbl)
+        theme_row.addStretch()
+        theme_row.addWidget(self.theme_seg)
+        layout.addLayout(theme_row)
+
+        # Preview Box (paints its own "video" backdrop)
+        self.preview_box = _PreviewBackdrop(theme)
+        self.preview_box.setFixedHeight(96)
         preview_layout = QVBoxLayout(self.preview_box)
         preview_layout.setContentsMargins(0, 0, 0, 0)
         preview_layout.setAlignment(Qt.AlignCenter)
         
         self.preview_card = QFrame()
-        self.preview_card.setStyleSheet(f"background-color: {theme.surface}; border: 1px solid {theme.border}; border-radius: 8px;")
+        self.preview_card.setObjectName("PreviewCard")
         card_layout = QVBoxLayout(self.preview_card)
         card_layout.setContentsMargins(14, 8, 14, 8)
         card_layout.setSpacing(4)
         
+        # The real overlay is always light text on a dark card — preview that.
         self.src_lbl = QLabel("We call that gap the ear-voice span.")
         self.src_lbl.setFont(font_ui(8.5))
-        self.src_lbl.setStyleSheet(f"color: {theme.teal};")
-        
+        self.src_lbl.setStyleSheet("color: rgba(220,220,220,0.75); background: transparent;")
+
         self.tgt_lbl = QLabel("Khoảng cách đó gọi là ear-voice span.")
-        self.f_tgt = font_ui(9.5, QFont.Weight.Medium)
+        self.f_tgt = font_ui(9.5, QFont.Weight.DemiBold)
         self.tgt_lbl.setFont(self.f_tgt)
-        self.tgt_lbl.setStyleSheet(f"color: {theme.text};")
+        self.tgt_lbl.setStyleSheet("color: #FFFFFF; background: transparent;")
         
         card_layout.addWidget(self.src_lbl)
         card_layout.addWidget(self.tgt_lbl)
@@ -613,17 +650,29 @@ class DisplayTab(QWidget):
             ))
 
     def _on_reset_position(self):
-        self.settings.update(display={'position': 'bottom'})
-        
+        # Also forget a position the user dragged the overlay to.
+        self.settings.update(display={'position': 'bottom', 'custom_pos': []})
+
+    def _on_theme_change(self, text):
+        mapping = {"Tối": "dark", "Sáng": "light", "Theo hệ thống": "auto"}
+        self.settings.update(ui={'theme': mapping.get(text, "dark")})
+
     def _on_font_size(self, v):
-        self.f_tgt.setPixelSize(v)
+        # The overlay uses point sizes; preview at a capped size so the
+        # sample still fits the preview box.
+        self.f_tgt.setPointSizeF(min(float(v), 20.0) * 0.6 + 4)
         self.tgt_lbl.setFont(self.f_tgt)
         self.settings.update(display={'font_size': v})
 
     def _on_opacity_change(self, v):
-        alpha = int(255 * v / 100.0)
-        self.preview_card.setStyleSheet(f"background-color: rgba(0, 0, 0, {alpha/255.0:.2f}); border-radius: 8px;")
+        self._apply_preview_opacity(v / 100.0)
         self.settings.update(display={'bg_opacity': v / 100.0})
+
+    def _apply_preview_opacity(self, opacity: float) -> None:
+        self.preview_card.setStyleSheet(
+            f"QFrame#PreviewCard {{ background-color: rgba(18, 20, 26, {opacity:.2f}); "
+            f"border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; }}"
+        )
 
     def _on_align_change(self, text):
         mapping = {"Căn trái": "left", "Căn giữa": "center", "Căn phải": "right"}
@@ -652,6 +701,9 @@ class DisplayTab(QWidget):
         self.align_seg.setValue(align_map.get(getattr(d.display, 'alignment', 'center'), "Căn giữa"))
         self.orig_tog.setChecked(d.display.show_original)
         self.font_tog.setChecked(d.ui.use_custom_fonts)
+        theme_map = {"dark": "Tối", "light": "Sáng", "auto": "Theo hệ thống"}
+        self.theme_seg.setValue(theme_map.get(d.ui.theme, "Tối"))
+        self._apply_preview_opacity(d.display.bg_opacity)
 
         # Set combobox current indexes
         src_code = getattr(d.ui, 'src_lang', 'auto')
@@ -670,26 +722,35 @@ class DisplayTab(QWidget):
                 self.tgt_lang_cb.blockSignals(False)
                 break
 
+
+
+class _PreviewBackdrop(QWidget):
+    """Striped stand-in for a video frame behind the subtitle preview.
+
+    (Previously painted by the parent tab, underneath this child — which then
+    covered it with its own background, so the stripes never showed.)
+    """
+
+    def __init__(self, theme: ThemeColors, parent=None):
+        super().__init__(parent)
+        self.theme = theme
+
     def paintEvent(self, event):
-        super().paintEvent(event)
-        # Paint diagonal stripe pattern for preview box background
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        box_rect = self.preview_box.geometry()
-        
+        box_rect = self.rect()
         path = QPainterPath()
-        path.addRoundedRect(box_rect, 11, 11)
+        path.addRoundedRect(QRectF(box_rect), 12, 12)
         painter.setClipPath(path)
-        
-        painter.fillRect(box_rect, QColor("#11100D"))
-        
-        pen = QPen(QColor(self.theme.border))
+
+        is_light = getattr(self.theme, "name", "dark") == "light"
+        painter.fillRect(box_rect, QColor("#5B6475" if is_light else "#0E1015"))
+        pen = QPen(QColor(255, 255, 255, 26 if is_light else 16))
         pen.setWidthF(1.5)
         painter.setPen(pen)
-        
         spacing = 15
         for i in range(-box_rect.height(), box_rect.width(), spacing):
-            painter.drawLine(box_rect.x() + i, box_rect.y(), box_rect.x() + i + box_rect.height(), box_rect.bottom())
+            painter.drawLine(i, 0, i + box_rect.height(), box_rect.height())
         painter.end()
 
 
@@ -819,8 +880,13 @@ class ModelTab(QWidget):
         mt_lbl.setStyleSheet(f"color: {theme.dim}; font-size: 9.5px;")
         layout.addWidget(mt_lbl)
 
-        mt_layout = QHBoxLayout()
-        mt_layout.setSpacing(10)
+        # 3 columns grid: six cards squeezed into one row truncated their text
+        # at the default window width.
+        from PySide6.QtWidgets import QGridLayout
+
+        mt_layout = QGridLayout()
+        mt_layout.setHorizontalSpacing(10)
+        mt_layout.setVerticalSpacing(10)
 
         self.mt_frames = {}
 
@@ -835,7 +901,10 @@ class ModelTab(QWidget):
 
         for key, name, sub_text, desc in mt_options:
             frame = QFrame()
+            frame.setObjectName("MtCard")
+            frame.setAttribute(Qt.WA_Hover, True)
             frame.setMinimumHeight(74)
+            frame.setMinimumWidth(110)
             frame.setCursor(Qt.PointingHandCursor)
             frame_layout = QVBoxLayout(frame)
             frame_layout.setContentsMargins(12, 10, 12, 10)
@@ -863,16 +932,18 @@ class ModelTab(QWidget):
                 return handler
 
             frame.mousePressEvent = make_click_handler(key)
-            mt_layout.addWidget(frame)
+            idx = len(self.mt_frames)
+            mt_layout.addWidget(frame, idx // 3, idx % 3)
             self.mt_frames[key] = frame
 
         layout.addLayout(mt_layout)
 
         # Speed Mode Toggle
         speed_frame = QFrame()
+        speed_frame.setObjectName("SpeedCard")
         speed_frame.setStyleSheet(
-            f"background-color: {theme.raised}; border-radius: 10px; "
-            f"border: 2px solid {theme.teal};"
+            f"QFrame#SpeedCard {{ background-color: {theme.raised}; border-radius: 12px; "
+            f"border: 1px solid {theme.border}; }}"
         )
         speed_layout = QHBoxLayout(speed_frame)
         speed_layout.setContentsMargins(14, 10, 14, 10)
@@ -897,9 +968,10 @@ class ModelTab(QWidget):
 
         # Summary & Restart Notice
         self.summary = QLabel("Tổng ước tính: ~1.9s — chuẩn xác & mượt mà cho phụ đề.")
+        self.summary.setWordWrap(True)
         self.summary.setStyleSheet(
             f"background-color: {theme.raised}; color: {theme.text}; "
-            f"padding: 10px 12px; border-radius: 8px; font-size: 12.5px;"
+            f"padding: 10px 12px; border-radius: 10px; font-size: 12.5px;"
         )
         layout.addWidget(self.summary)
 
@@ -937,7 +1009,9 @@ class ModelTab(QWidget):
             )
             card.set_active(is_active)
 
-        # Update MT frames UI
+        # Update MT frames UI — selectors scoped to the card itself: the old
+        # bare "border: 2px solid" cascaded onto every label inside the card
+        # (that drew a box around each text line of the selected engine).
         for key, frame in self.mt_frames.items():
             is_active = (
                 (key == curr_mt)
@@ -945,16 +1019,20 @@ class ModelTab(QWidget):
                 or (key == "llama-3b" and curr_mt in ("llama", "llama3.2", "llama-3.2", "llama3.2:3b"))
                 or (key == "qwen-3b" and curr_mt == "qwen")
             )
-            if is_active:
-                frame.setStyleSheet(
-                    f"background-color: {self.theme.raised}; border-radius: 10px; "
-                    f"border: 2px solid {self.theme.teal};"
-                )
-            else:
-                frame.setStyleSheet(
-                    f"background-color: {self.theme.raised}; border-radius: 10px; "
-                    f"border: 1px solid transparent;"
-                )
+            border = f"2px solid {self.theme.teal}" if is_active else "1px solid transparent"
+            frame.setStyleSheet(f"""
+                QFrame#MtCard {{
+                    background-color: {self.theme.raised};
+                    border-radius: 12px;
+                    border: {border};
+                }}
+                QFrame#MtCard:hover {{
+                    border: {border if is_active else f"1px solid {self.theme.border_strong}"};
+                }}
+                QFrame#MtCard QLabel {{ background: transparent; border: none; }}
+            """)
+            # Speed mode forces NLLB 600M: show the choice as inactive then.
+            frame.setEnabled(not speed)
 
         # Update speed toggle
         self.speed_tog.blockSignals(True)
@@ -1001,71 +1079,218 @@ class ModelTab(QWidget):
             )
 
 
+class GlossaryRow(QFrame):
+    """One editable 'source → target' glossary pair."""
+
+    changed = Signal()
+    remove_requested = Signal(object)
+
+    def __init__(self, source: str, target: str, theme: ThemeColors):
+        super().__init__()
+        self.setObjectName("GlossaryRow")
+        self.setStyleSheet(f"""
+            QFrame#GlossaryRow {{
+                background-color: {theme.raised};
+                border: 1px solid {theme.border};
+                border-radius: 10px;
+            }}
+            QLineEdit {{
+                background: {theme.surface};
+                border: 1px solid {theme.border};
+                border-radius: 7px;
+                padding: 5px 9px;
+                font-size: 12.5px;
+            }}
+            QLineEdit:focus {{ border-color: {theme.accent}; }}
+            QLabel {{ background: transparent; color: {theme.dim}; }}
+        """)
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(8, 6, 6, 6)
+        lay.setSpacing(8)
+        self.src = QLineEdit(source)
+        self.src.setPlaceholderText("Thuật ngữ gốc (vd: GPU, Kubernetes)")
+        self.tgt = QLineEdit(target)
+        self.tgt.setPlaceholderText("Bản dịch (hoặc: giữ nguyên)")
+        arrow = QLabel("→")
+        for edit in (self.src, self.tgt):
+            edit.editingFinished.connect(self.changed.emit)
+        del_btn = QPushButton("Xoá")
+        del_btn.setCursor(Qt.PointingHandCursor)
+        del_btn.setToolTip("Xoá thuật ngữ này")
+        del_btn.setStyleSheet(f"""
+            QPushButton {{ background: transparent; color: {theme.dim}; border: none;
+                          padding: 4px 8px; font-size: 12px; }}
+            QPushButton:hover {{ color: {theme.error}; }}
+        """)
+        del_btn.clicked.connect(lambda: self.remove_requested.emit(self))
+        lay.addWidget(self.src, 1)
+        lay.addWidget(arrow)
+        lay.addWidget(self.tgt, 1)
+        lay.addWidget(del_btn)
+
+    def entry(self) -> dict:
+        return {"source": self.src.text().strip(), "target": self.tgt.text().strip()}
+
+
 class GlossaryTab(QWidget):
+    """User glossary: terms the translator must render a fixed way.
+
+    The tab existed but was never shown and its buttons did nothing, so the
+    glossary (used by the term locker and the LLM prompts) was uneditable.
+    """
+
     def __init__(self, theme: ThemeColors, settings: AppSettings):
         super().__init__()
         self.theme = theme
         self.settings = settings
+        self.rows: list[GlossaryRow] = []
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        
-        desc = QLabel("Tên riêng, jargon, tên sản phẩm — ép model dịch đúng.")
-        desc.setStyleSheet(f"color: {theme.dim}; font-size: 13px;")
+        layout.setContentsMargins(24, 22, 24, 24)
+        layout.setSpacing(12)
+
+        title = QLabel("Thuật ngữ & tên riêng")
+        title.setStyleSheet(f"color: {theme.text}; font-size: 16px; font-weight: 600;")
+        layout.addWidget(title)
+
+        desc = QLabel(
+            "Ép bộ dịch giữ đúng tên riêng, thuật ngữ, tên sản phẩm. "
+            "Ghi “giữ nguyên” ở cột bản dịch để giữ nguyên từ gốc."
+        )
+        desc.setWordWrap(True)
+        desc.setStyleSheet(f"color: {theme.dim}; font-size: 12.5px;")
         layout.addWidget(desc)
-        
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-        
-        self.list_widget = QWidget()
-        self.list_layout = QVBoxLayout(self.list_widget)
-        self.list_layout.setAlignment(Qt.AlignTop)
-        self.scroll.setWidget(self.list_widget)
-        layout.addWidget(self.scroll)
-        
-        # Add buttons
+
+        self.list_layout = QVBoxLayout()
+        self.list_layout.setSpacing(6)
+        layout.addLayout(self.list_layout)
+
+        self.empty_lbl = QLabel("Chưa có thuật ngữ nào.")
+        self.empty_lbl.setStyleSheet(f"color: {theme.dim}; font-size: 12px; padding: 6px 2px;")
+        layout.addWidget(self.empty_lbl)
+
         btn_layout = QHBoxLayout()
-        add_btn = ElasticButton("+ Thêm từ")
+        add_btn = ElasticButton("+ Thêm thuật ngữ")
         add_btn.setStyleSheet(f"""
             QPushButton {{
-                border: 1px dashed {theme.dim};
+                border: 1px dashed {theme.border_strong};
                 border-radius: 9px;
                 color: {theme.text};
-                padding: 10px;
+                padding: 9px 14px;
                 background: transparent;
             }}
-            QPushButton:hover {{ background: {theme.raised}; }}
+            QPushButton:hover {{ background: {theme.raised}; border-color: {theme.accent}; }}
         """)
-        
-        imp_btn = ElasticButton("Nhập từ .csv")
+        add_btn.clicked.connect(self._add_empty_row)
+
+        imp_btn = ElasticButton("Nhập từ file .csv")
+        imp_btn.setToolTip("Mỗi dòng: thuật ngữ gốc, bản dịch")
         imp_btn.setStyleSheet(f"""
-            QPushButton {{
-                border: none;
-                color: {theme.teal};
-                background: transparent;
-            }}
-            QPushButton:hover {{ text-decoration: underline; }}
+            QPushButton {{ border: none; color: {theme.teal}; background: transparent; padding: 9px 6px; }}
+            QPushButton:hover {{ color: {theme.accent}; }}
         """)
-        
+        imp_btn.clicked.connect(self._import_csv)
+
         btn_layout.addWidget(add_btn)
         btn_layout.addWidget(imp_btn)
+        btn_layout.addStretch()
         layout.addLayout(btn_layout)
-        
-        layout.addSpacing(16)
-        tog_layout = QHBoxLayout()
-        tog_lbl = QLabel("Bỏ từ đệm khi DUB\n\"uhm\", \"you know\"")
-        tog_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px;")
-        self.tog = ToggleSwitch(theme)
-        self.tog.toggled.connect(lambda v: self.settings.update(glossary={'strip_fillers': v}))
-        tog_layout.addWidget(tog_lbl)
-        tog_layout.addStretch()
-        tog_layout.addWidget(self.tog)
-        layout.addLayout(tog_layout)
-        
+
+        layout.addSpacing(8)
+        self.caps_tog = self._toggle_row(
+            layout, "Tự giữ từ viết HOA (GPU, API, NASA…)", "auto_lock_caps"
+        )
+        self.camel_tog = self._toggle_row(
+            layout, "Tự giữ tên dạng CamelCase (OpenAI, GitHub…)", "auto_lock_camel"
+        )
+        self.filler_tog = self._toggle_row(
+            layout, "Bỏ từ đệm tiếng Anh (uh, um, erm…) trước khi dịch", "strip_fillers"
+        )
+        layout.addStretch()
         self._load_settings()
-        
+
+    def _toggle_row(self, parent_layout, text: str, key: str) -> ToggleSwitch:
+        row = QHBoxLayout()
+        lbl = QLabel(text)
+        lbl.setStyleSheet(f"color: {self.theme.text}; font-size: 13px;")
+        tog = ToggleSwitch(self.theme)
+        tog.toggled.connect(lambda v, k=key: self.settings.update(glossary={k: v}))
+        row.addWidget(lbl)
+        row.addStretch()
+        row.addWidget(tog)
+        parent_layout.addLayout(row)
+        return tog
+
+    # ── rows ───────────────────────────────────────────────────────
+    def _add_row(self, source: str = "", target: str = "") -> GlossaryRow:
+        row = GlossaryRow(source, target, self.theme)
+        row.changed.connect(self._save)
+        row.remove_requested.connect(self._remove_row)
+        self.list_layout.addWidget(row)
+        self.rows.append(row)
+        self.empty_lbl.setVisible(False)
+        return row
+
+    def _add_empty_row(self) -> None:
+        row = self._add_row()
+        row.src.setFocus()
+
+    def _remove_row(self, row: GlossaryRow) -> None:
+        if row in self.rows:
+            self.rows.remove(row)
+            self.list_layout.removeWidget(row)
+            row.deleteLater()
+        self.empty_lbl.setVisible(not self.rows)
+        self._save()
+
+    def _save(self) -> None:
+        entries = [r.entry() for r in self.rows if r.entry()["source"]]
+        if entries != list(self.settings.data.glossary.entries):
+            self.settings.set_glossary_entries(entries)
+
+    def _import_csv(self) -> None:
+        import csv
+
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Nhập thuật ngữ", "", "CSV / TXT (*.csv *.txt);;Tất cả (*.*)"
+        )
+        if not path:
+            return
+        added = 0
+        existing = {r.entry()["source"].lower() for r in self.rows}
+        try:
+            with open(path, newline="", encoding="utf-8-sig") as fh:
+                sample = fh.read(2048)
+                fh.seek(0)
+                try:
+                    dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+                except csv.Error:
+                    dialect = csv.excel
+                for cols in csv.reader(fh, dialect):
+                    if len(cols) < 2 or not cols[0].strip():
+                        continue
+                    src, tgt = cols[0].strip(), cols[1].strip()
+                    if src.lower() in ("source", "thuật ngữ", "term") or src.lower() in existing:
+                        continue
+                    self._add_row(src, tgt)
+                    existing.add(src.lower())
+                    added += 1
+        except Exception as exc:
+            QMessageBox.warning(self, "Không đọc được file", str(exc))
+            return
+        self._save()
+        QMessageBox.information(self, "Đã nhập thuật ngữ", f"Đã thêm {added} thuật ngữ.")
+
     def _load_settings(self):
-        self.tog.setChecked(self.settings.data.glossary.strip_fillers)
+        g = self.settings.data.glossary
+        for e in g.entries:
+            if isinstance(e, dict) and e.get("source"):
+                self._add_row(e.get("source", ""), e.get("target", ""))
+        self.empty_lbl.setVisible(not self.rows)
+        self.caps_tog.setChecked(g.auto_lock_caps)
+        self.camel_tog.setChecked(g.auto_lock_camel)
+        self.filler_tog.setChecked(g.strip_fillers)
 
 
 class DubTab(QWidget):
@@ -1122,14 +1347,42 @@ class DubTab(QWidget):
             }}
         """)
         
-        # Mock load voices
-        voices = [p.stem for p in Path("models/piper").glob("*.onnx")] if Path("models/piper").exists() else ["vi-VN-hoài-bảo-medium", "en-US-amy-low"]
-        self.voice_cb.addItems(voices)
-        self.voice_cb.currentTextChanged.connect(lambda v: self.settings.update(dub={'voice': v}))
+        # Real installed Piper voices (project models/ dir, not the CWD). The
+        # old code listed two fake voices and its addItems() immediately
+        # overwrote the saved voice with the first fake one.
+        try:
+            from rtt.dub import DEFAULT_VOICE, DEFAULT_VOICE_DIR
+        except Exception:
+            DEFAULT_VOICE, DEFAULT_VOICE_DIR = "vi_VN-vais1000-medium", Path("models/piper")
+        voices = sorted(p.stem for p in Path(DEFAULT_VOICE_DIR).glob("*.onnx")) if Path(DEFAULT_VOICE_DIR).exists() else []
+        current = settings.data.dub.voice or DEFAULT_VOICE
+        if current not in voices:
+            voices.insert(0, current)
+        self.voice_cb.blockSignals(True)
+        for v in voices:
+            installed = (Path(DEFAULT_VOICE_DIR) / f"{v}.onnx").exists()
+            self.voice_cb.addItem(v if installed else f"{v} (chưa tải)", v)
+        self.voice_cb.blockSignals(False)
+        self.voice_cb.currentIndexChanged.connect(
+            lambda i: self.settings.update(dub={'voice': self.voice_cb.itemData(i)})
+        )
         voice_layout.addWidget(voice_lbl)
         voice_layout.addStretch()
         voice_layout.addWidget(self.voice_cb)
         layout.addLayout(voice_layout)
+
+        if not any((Path(DEFAULT_VOICE_DIR) / f"{v}.onnx").exists() for v in voices):
+            missing = QLabel(
+                "Chưa có giọng đọc nào. Tải giọng tiếng Việt bằng lệnh:\n"
+                f"uv run python -m piper.download_voices --data-dir models/piper {DEFAULT_VOICE}"
+            )
+            missing.setWordWrap(True)
+            missing.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            missing.setStyleSheet(
+                f"background-color: {theme.raised}; color: {theme.warning}; padding: 10px 12px;"
+                f" border-radius: 10px; font-size: 12px;"
+            )
+            layout.addWidget(missing)
         
         self.duck_slider = SliderWidget("Hạ tiếng gốc", 0, 100, theme, unit="%")
         self.duck_slider.valueChanged.connect(lambda v: self.settings.update(dub={'ducking': v/100.0}))
@@ -1138,22 +1391,42 @@ class DubTab(QWidget):
         self.speed_slider = SliderWidget("Tốc độ đọc tối đa", 100, 200, theme, unit="×", is_float=True)
         self.speed_slider.valueChanged.connect(lambda v: self.settings.update(dub={'max_speed': v/100.0}))
         layout.addWidget(self.speed_slider)
-        
-        info = QLabel("Khi bật DUB, giọng đọc sẽ trễ ~3s so với hình. Âm lượng ứng dụng khác tự động giảm.")
+
+        echo_row = QHBoxLayout()
+        echo_txt = QVBoxLayout()
+        echo_txt.setSpacing(2)
+        echo_lbl = QLabel("Chống vọng giọng thuyết minh")
+        echo_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px;")
+        echo_desc = QLabel("Không thu lại chính giọng đọc → tránh dịch lặp vô hạn (khuyên dùng)")
+        echo_desc.setStyleSheet(f"color: {theme.dim}; font-size: 11.5px;")
+        echo_txt.addWidget(echo_lbl)
+        echo_txt.addWidget(echo_desc)
+        self.echo_tog = ToggleSwitch(theme)
+        self.echo_tog.toggled.connect(lambda v: self.settings.update(dub={'block_self_echo': v}))
+        echo_row.addLayout(echo_txt)
+        echo_row.addStretch()
+        echo_row.addWidget(self.echo_tog)
+        layout.addLayout(echo_row)
+
+        info = QLabel("Khi bật thuyết minh, giọng đọc trễ ~3s so với hình và âm lượng các ứng dụng khác tự động giảm.")
         info.setWordWrap(True)
-        info.setStyleSheet(f"background-color: {theme.raised}; color: {theme.dim}; padding: 12px; border-radius: 8px; font-size: 12.5px;")
+        info.setStyleSheet(f"background-color: {theme.raised}; color: {theme.dim}; padding: 12px; border-radius: 10px; font-size: 12.5px;")
         layout.addWidget(info)
-        
+
         layout.addStretch()
         self._load_settings()
-        
+
     def _load_settings(self):
         d = self.settings.data.dub
         self.dub_tog.setChecked(d.enabled)
         self.duck_slider.setValue(int(d.ducking * 100))
         self.speed_slider.setValue(int(d.max_speed * 100))
-        idx = self.voice_cb.findText(d.voice)
-        if idx >= 0: self.voice_cb.setCurrentIndex(idx)
+        self.echo_tog.setChecked(getattr(d, "block_self_echo", True))
+        idx = self.voice_cb.findData(d.voice)
+        if idx >= 0:
+            self.voice_cb.blockSignals(True)
+            self.voice_cb.setCurrentIndex(idx)
+            self.voice_cb.blockSignals(False)
 
 
 class SummaryTab(QWidget):
@@ -1186,7 +1459,7 @@ class SummaryTab(QWidget):
         api_lbl.setStyleSheet(f"color: {theme.text}; font-size: 13px; font-weight: 500;")
         api_header.addWidget(api_lbl)
 
-        link_lbl = QLabel("<a href='https://aistudio.google.com/apikey' style='color:#4B9E8E; text-decoration:none;'>Lấy API key miễn phí ↗</a>")
+        link_lbl = QLabel(f"<a href='https://aistudio.google.com/apikey' style='color:{theme.teal}; text-decoration:none;'>Lấy API key miễn phí ↗</a>")
         link_lbl.setOpenExternalLinks(True)
         link_lbl.setStyleSheet("font-size: 11.5px;")
         api_header.addStretch()
@@ -1209,7 +1482,10 @@ class SummaryTab(QWidget):
                 font-size: 12px;
             }}
         """)
-        self.api_input.textChanged.connect(lambda t: self.settings.update(summary={'api_key': t.strip()}))
+        # Commit when editing finishes (not on every keystroke).
+        self.api_input.editingFinished.connect(
+            lambda: self.settings.update(summary={'api_key': self.api_input.text().strip()})
+        )
         key_row.addWidget(self.api_input, 1)
 
         self.show_key_btn = ElasticButton("Hiện")
@@ -1344,30 +1620,44 @@ class SummaryTab(QWidget):
 
 class Sidebar(QWidget):
     tabChanged = Signal(int)
-    
+
+    TABS = [
+        ("Hiển thị", 0),
+        ("Mô hình AI", 1),
+        ("Thuật ngữ", 2),
+        ("Thuyết minh", 3),
+        ("Tóm tắt AI", 4),
+    ]
+
     def __init__(self, theme: ThemeColors):
         super().__init__()
         self.theme = theme
-        self.setFixedWidth(170)
-        self.setStyleSheet(f"background-color: {theme.bg}; border-top-left-radius: 14px; border-bottom-left-radius: 14px;")
-        
+        self.setObjectName("SettingsSidebar")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setFixedWidth(184)
+        # Scoped: the bare "background-color: …" used to paint a box behind
+        # every label in the sidebar (e.g. the "Cài đặt hệ thống" title).
+        self.setStyleSheet(f"""
+            QWidget#SettingsSidebar {{
+                background-color: {theme.bg};
+                border-right: 1px solid {theme.border};
+                border-bottom-left-radius: 16px;
+            }}
+            QWidget#SettingsSidebar QLabel {{ background: transparent; }}
+        """)
+
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 24, 16, 24)
-        
-        title = QLabel("Cài đặt hệ thống")
-        title.setStyleSheet(f"color: {theme.text}; font-size: 15px; font-weight: 700; margin-bottom: 8px;")
+        layout.setContentsMargins(14, 22, 14, 22)
+        layout.setSpacing(4)
+
+        title = QLabel("Cài đặt")
+        title.setStyleSheet(f"color: {theme.text}; font-size: 15px; font-weight: 700; padding: 0 6px 10px 6px;")
         layout.addWidget(title)
-        
+
         self.btn_group = QButtonGroup(self)
         self.btn_group.setExclusive(True)
-        
-        tabs = [
-            ("Hiển thị", 0),
-            ("Mô hình AI", 1),
-            ("Thuyết minh", 2),
-            ("Tóm tắt AI", 3),
-        ]
-        for label, idx in tabs:
+
+        for label, idx in self.TABS:
             btn = ElasticButton(label)
             btn.setCheckable(True)
             btn.setCursor(Qt.PointingHandCursor)
@@ -1387,9 +1677,9 @@ class Sidebar(QWidget):
                     color: {theme.text};
                 }}
                 QPushButton:checked {{
-                    background: {theme.raised};
-                    color: {theme.accent};
-                    border: 1.5px solid {theme.accent};
+                    background: {theme.pill_bg};
+                    color: {theme.pill_text};
+                    border: 1.5px solid transparent;
                     font-weight: 700;
                 }}
             """)
@@ -1418,6 +1708,11 @@ class Sidebar(QWidget):
     def _on_tab_click(self, btn):
         self.tabChanged.emit(self.btn_group.id(btn))
 
+    def set_checked(self, idx: int) -> None:
+        btn = self.btn_group.button(idx)
+        if btn is not None:
+            btn.setChecked(True)
+
 
 class SettingsPanel(QWidget):
     def __init__(self, settings: AppSettings, parent=None, bridge=None):
@@ -1435,13 +1730,21 @@ class SettingsPanel(QWidget):
         self.sidebar.tabChanged.connect(self._set_tab)
 
         self.content_area = QWidget()
-        self.content_area.setStyleSheet(f"background-color: {self.theme.surface}; border-top-right-radius: 14px; border-bottom-right-radius: 14px;")
+        self.content_area.setObjectName("SettingsContent")
+        self.content_area.setAttribute(Qt.WA_StyledBackground, True)
+        # Scoped: unscoped, this background was inherited by every label and
+        # drew dark boxes behind texts inside the (lighter) model cards.
+        self.content_area.setStyleSheet(
+            f"QWidget#SettingsContent {{ background-color: {self.theme.surface}; "
+            f"border-bottom-right-radius: 16px; }}"
+        )
         content_layout = QVBoxLayout(self.content_area)
         content_layout.setContentsMargins(0, 0, 0, 0)
 
         self.stack = QStackedWidget()
         self.stack.addWidget(make_scrollable_tab(DisplayTab(self.theme, self.settings, bridge=self.bridge), self.theme))
         self.stack.addWidget(make_scrollable_tab(ModelTab(self.theme, self.settings), self.theme))
+        self.stack.addWidget(make_scrollable_tab(GlossaryTab(self.theme, self.settings), self.theme))
         self.stack.addWidget(make_scrollable_tab(DubTab(self.theme, self.settings), self.theme))
         self.stack.addWidget(make_scrollable_tab(SummaryTab(self.theme, self.settings), self.theme))
 
@@ -1449,17 +1752,19 @@ class SettingsPanel(QWidget):
 
         main_layout.addWidget(self.sidebar)
         main_layout.addWidget(self.content_area, 1)
-
-        if self.settings:
-            self.settings.changed.connect(self._on_settings_changed)
+        # Theme switches are handled by MainWindow rebuilding this panel.
 
     def _set_tab(self, idx):
         self.stack.setCurrentIndex(idx)
 
-    def _on_settings_changed(self):
-        if self.settings:
-            self.theme = get_theme(self.settings.data.ui.theme)
-            apply_theme(self, self.theme)
+    def set_tab(self, idx: int) -> None:
+        """Switch page and keep the sidebar highlight in sync."""
+        if 0 <= idx < self.stack.count():
+            self.stack.setCurrentIndex(idx)
+            self.sidebar.set_checked(idx)
+
+    def current_tab(self) -> int:
+        return self.stack.currentIndex()
 
 
 class SettingsWindow(QWidget):
